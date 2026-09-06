@@ -9,6 +9,7 @@ import { FEATURES } from "./strategy/features.js";
 import { strategySchema, explainInvalid, type Strategy } from "./strategy/schema.js";
 import { livePicks, liveTape, publishedPicks, liveTrades, scanRate } from "./live.js";
 import { startPaperEngine } from "./paper.js";
+import { attach } from "./stream.js";
 import { TP_MULT, SL_MULT } from "./model/spec.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
@@ -23,7 +24,15 @@ assertFeatureParity();
 
 const app = express();
 app.use(express.json({ limit: "256kb" }));
-app.use(compression());
+app.use(compression({
+  // SSE must never be buffered by the compressor, or events sit in a gzip
+  // window until it flushes and the "live" feed arrives in clumps — the exact
+  // problem the stream exists to remove.
+  filter: (req, res) =>
+    String(res.getHeader("Content-Type") || "").includes("text/event-stream")
+      ? false
+      : compression.filter(req, res),
+}));
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 app.use(express.static(path.join(here, "../public"), { maxAge: "1h" }));
@@ -191,7 +200,11 @@ app.get("/api/live/tape", async (_req, res, next) => {
   try { res.json(await liveTape()); } catch (e) { next(e); }
 });
 
-/** The raw firehose: every transaction being scanned, with coin images. */
+/** Live trade stream. One tailer fans out to every connected browser. */
+app.get("/api/live/stream", (_req, res) => attach(res));
+
+/** The raw firehose as a snapshot — used to fill the table before the stream
+ *  produces its first rows, so the panel is never empty on load. */
 app.get("/api/live/trades", async (_req, res, next) => {
   try {
     const [trades, rate] = await Promise.all([liveTrades(60), scanRate()]);

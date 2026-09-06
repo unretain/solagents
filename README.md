@@ -1,4 +1,4 @@
-# solagents
+# Poump Lab
 
 ### Live: **https://api.polyx.trade/agents/**
 
@@ -9,6 +9,8 @@ to deploy anywhere else — the data is on that machine and so is the app.
 ---
 
 A public platform for training trading agents on live Solana memecoin data.
+
+(Repo and services are still named `solagents`; the product is Poump Lab.)
 
 Describe a strategy in plain English. An LLM compiles it once into a validated
 JSON config. That config is backtested against ~380k real per-coin episodes,
@@ -25,8 +27,8 @@ decision, and a strategy can be diffed, versioned and ranked.
   concentration, dev behaviour, X-link quality, LLM presentation score.
 - **Backtest** it over real history with modelled fees, bonding-curve slippage,
   and exit simulation on a 10-second price path.
-- **Watch it live** — a running tape of coins being picked up right now, by your
-  draft and by every published strategy.
+- **Watch it live** — every transaction on the chain streamed in over SSE as it
+  lands, one at a time, beside what the agents picked out of it.
 - **Leaderboard** — backtest, paper and live ranked separately. A backtest is a
   claim about the past; only a live run risked anything. They are never merged.
 
