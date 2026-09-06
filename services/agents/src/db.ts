@@ -13,13 +13,48 @@ function pgUrl(): string {
     const u = new URL(raw);
     u.searchParams.delete("schema");
     u.searchParams.delete("connection_limit");
+    // sslmode is stripped and re-applied via the explicit `ssl` option below.
+    // pg-connection-string currently treats sslmode=require as verify-full, and
+    // whatever it derives from the URL OVERRIDES the ssl object passed to Pool —
+    // so leaving it in makes the connection fail against the box's self-signed
+    // certificate no matter what the code says.
+    u.searchParams.delete("sslmode");
+    u.searchParams.delete("uselibpqcompat");
     return u.toString();
   } catch {
     return raw;
   }
 }
 
-export const pool = new Pool({ connectionString: pgUrl(), max: 8 });
+/** sslmode as written by the operator, before pgUrl() strips it. */
+function requestedSslMode(): string {
+  const m = /[?&]sslmode=([^&]+)/.exec(process.env.DATABASE_URL || "");
+  return m ? decodeURIComponent(m[1]).toLowerCase() : "";
+}
+
+/**
+ * TLS for remote connections.
+ *
+ * The box's Postgres presents Ubuntu's self-signed ("snakeoil") certificate, so
+ * the chain cannot be verified and `rejectUnauthorized: true` would refuse every
+ * connection. The traffic is still encrypted, and auth is scram-sha-256, which
+ * never puts the password on the wire even to a machine-in-the-middle — so the
+ * exposure here is confidentiality of query data, not credential theft.
+ *
+ * Local connections skip TLS entirely: the socket never leaves the machine, and
+ * pg_hba only accepts `hostssl` from remote hosts anyway.
+ */
+function sslConfig(url: string): false | { rejectUnauthorized: boolean } {
+  const isLocal = /@(127\.0\.0\.1|localhost|\[::1\]|::1)[:/]/.test(url);
+  if (isLocal) return false;
+  // An operator who explicitly asked for verify-full gets it, rather than being
+  // silently downgraded. Everything else is encrypted-but-unverified, which is
+  // what a self-signed server certificate allows.
+  return { rejectUnauthorized: requestedSslMode() === "verify-full" };
+}
+
+const CONN = pgUrl();
+export const pool = new Pool({ connectionString: CONN, max: 8, ssl: sslConfig(CONN) });
 
 /**
  * Readable text for an unknown thrown value.
