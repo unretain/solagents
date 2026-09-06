@@ -90,6 +90,18 @@ export interface CompileResult {
 }
 
 export async function compileStrategy(text: string): Promise<CompileResult> {
+  // Say what is actually wrong. Without this the SDK throws a generic auth error
+  // and the page shows it verbatim, which reads like the feature is broken
+  // rather than switched off.
+  if (!(process.env.ANTHROPIC_API_KEY || "").trim()) {
+    return {
+      ok: false,
+      error:
+        "AI compile is off — no ANTHROPIC_API_KEY is configured. " +
+        "Use “Build by hand” to set the same conditions yourself; everything else works.",
+    };
+  }
+
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: text }];
 
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -98,7 +110,15 @@ export async function compileStrategy(text: string): Promise<CompileResult> {
       max_tokens: 8000,
       system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
       messages,
-      output_config: { format: zodOutputFormat(draftSchema) },
+      output_config: {
+        // Low effort, deliberately. The prompt is ~1,000 tokens in and ~142 out;
+        // at default effort the thinking tokens are ~2,500 and are billed as
+        // output, so they are 93% of the bill — $0.067 a compile instead of
+        // $0.005. This is constrained extraction into a fixed schema with a
+        // validator and a repair round behind it, not a reasoning problem.
+        effort: "low",
+        format: zodOutputFormat(draftSchema),
+      },
     });
 
     if (res.stop_reason === "refusal") {
