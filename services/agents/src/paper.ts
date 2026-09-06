@@ -157,11 +157,17 @@ async function markAndClose(): Promise<number> {
     const sl = rules.stop_loss_pct !== undefined ? p.entry_px * (1 - rules.stop_loss_pct / 100) : -Infinity;
     const trail = rules.trailing_stop_pct !== undefined ? peak * (1 - rules.trailing_stop_pct / 100) : -Infinity;
 
-    // Same adverse-first ordering as the backtester. Keeping the two in step
-    // matters more than either individual choice.
-    if (px <= sl)            { await close(p, px, "stop_loss"); closed++; }
-    else if (px <= trail)    { await close(p, px, "trailing_stop"); closed++; }
-    else if (px >= tp)       { await close(p, px, "take_profit"); closed++; }
+    // Same adverse-first ordering AND the same fill rule as the backtester:
+    // the worse of the trigger level and the observed price. Closing at the
+    // observed price on a take-profit books the whole gap between two 5s ticks —
+    // that recorded a +84% net fill on a 30% take-profit here, which no resting
+    // order would ever have earned. Keeping the two engines in step matters more
+    // than either individual choice.
+    const fill = (trigger: number) => Math.min(px, trigger);
+
+    if (px <= sl)            { await close(p, fill(sl), "stop_loss"); closed++; }
+    else if (px <= trail)    { await close(p, fill(trail), "trailing_stop"); closed++; }
+    else if (px >= tp)       { await close(p, fill(tp), "take_profit"); closed++; }
     else if (heldS >= rules.max_hold_s) { await close(p, px, "time"); closed++; }
   }
   return closed;

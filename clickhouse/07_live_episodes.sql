@@ -11,11 +11,27 @@
 
 CREATE OR REPLACE VIEW live_episodes AS
 WITH
+    -- Mints that traded at all recently. Cheap, and it bounds the next step.
+    recent_mints AS
+    (
+        SELECT DISTINCT mint FROM trades WHERE ts > now() - INTERVAL 40 MINUTE
+    ),
+    -- t0 must be the coin's FIRST EVER trade, exactly as `episodes` defines it.
+    --
+    -- Taking min(ts) over only the last 40 minutes (the obvious way to write
+    -- this) makes any OLD coin that resumes trading look like a brand-new
+    -- launch: a mint whose real first trade was five days ago came back with
+    -- t0 = its first trade inside the window, was served as a fresh launch, and
+    -- got bought by the paper engine. The backtest never saw such a row, so the
+    -- two stopped agreeing — the precise skew this design exists to prevent.
+    --
+    -- Scanning all history for these mints is affordable because `trades` is
+    -- ORDER BY (mint, ts), so each mint's first row is a seek, not a scan.
     launches AS
     (
         SELECT mint, min(ts) AS t0, argMin(trader, (ts, seq)) AS dev_wallet
         FROM trades
-        WHERE ts > now() - INTERVAL 40 MINUTE
+        WHERE mint IN (SELECT mint FROM recent_mints)
         GROUP BY mint
         HAVING t0 > now() - INTERVAL 40 MINUTE
     ),

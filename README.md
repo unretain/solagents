@@ -94,6 +94,18 @@ Stops resolve adverse-first, identically to the backtester. The high-water mark
 for trailing stops is persisted, not held in memory — if it reset on restart,
 every open trailing position would silently widen its stop.
 
+**Fill rule (both engines):** the exit price is the *worse* of the trigger level
+and the observed price — `min(px, trigger)`.
+
+- gapped past a stop → you eat the gap, you do not get the stop price
+- gapped past the take-profit → you get the take-profit, you do not book the
+  overshoot
+
+This is not a detail. Closing at the observed price on a take-profit books the
+whole move between two 5-second ticks: it recorded a **+84% net fill on a 30%
+take-profit** here before it was fixed. That is precisely the fictional profit
+that gets someone to fund a wallet.
+
 ## Why "episodes" and not candles
 
 Measured over 6 days and 25.7M trades:

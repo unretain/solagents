@@ -64,9 +64,18 @@ export function simulateExit(
     // checked BEFORE the take-profit: if both were reachable, we assume the
     // adverse one arrived first. Resolving ties the other way is the single
     // easiest way to manufacture a strategy that backtests well and loses live.
-    if (px <= sl) return { exitPx: sl, reason: "stop_loss", heldS: tSec, peakPx: peak };
-    if (px <= trail) return { exitPx: trail, reason: "trailing_stop", heldS: tSec, peakPx: peak };
-    if (px >= tp) return { exitPx: tp, reason: "take_profit", heldS: tSec, peakPx: peak };
+    // Fill price is the WORSE of the trigger level and the observed price:
+    //   - gapped past a stop  -> you eat the gap, you do not get the stop price
+    //   - gapped past the TP  -> you get the TP, you do not book the overshoot
+    // One rule, conservative in both directions, and identical to the live paper
+    // engine (see paper.ts). Taking the trigger price on stops flatters a
+    // strategy on exactly the moves that hurt most, and taking the observed
+    // price on take-profits manufactures profit that no resting order earns.
+    const fill = (trigger: number) => Math.min(px, trigger);
+
+    if (px <= sl) return { exitPx: fill(sl), reason: "stop_loss", heldS: tSec, peakPx: peak };
+    if (px <= trail) return { exitPx: fill(trail), reason: "trailing_stop", heldS: tSec, peakPx: peak };
+    if (px >= tp) return { exitPx: fill(tp), reason: "take_profit", heldS: tSec, peakPx: peak };
   }
 
   // Held to the time stop. Exits at the last price actually observed, not at a
