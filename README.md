@@ -167,7 +167,48 @@ ambiguity resolves against the strategy.
   `episodes_enriched` or with `FINAL`** — duplicates are only collapsed on merge,
   and a re-extracted window otherwise multiplies every affected episode.
 
-## Deploying to Railway
+## Where it runs
+
+**Live: https://api.polyx.trade/agents/**
+
+On the box, as `polyx-agents.service` on `:3002`, mounted by nginx at `/agents/`
+on the existing `api.polyx.trade` vhost. DNS and TLS are already handled by
+Cloudflare, so this needed no new record and no new certificate.
+
+It is a separate service from `polyx-api` on purpose: restarting the feed clears
+its in-memory pulse state and takes ~60s to refill from ClickHouse, so deploying
+the agent platform must never touch it.
+
+The frontend derives its API base from `location.pathname`, so it works both at
+an origin root and under the `/agents/` prefix. Hardcoding `/api/...` would send
+every request to the polyx feed API, which answers on the same host at the root.
+
+Deploy a change:
+
+```bash
+scp services/agents/src/**  root@88.216.198.213:/opt/solagents/services/agents/src/
+ssh root@88.216.198.213 'cd /opt/solagents/services/agents && npx tsc -p tsconfig.json && systemctl restart polyx-agents'
+```
+
+### Scheduled jobs (`/etc/cron.d/solagents`)
+
+Episodes stop accumulating without these, and the training set is the whole point.
+
+| when | what |
+|---|---|
+| hourly :07/:12/:17 | `--recent 4` extraction for horizons 30 / 60 / 180 |
+| 04:40 | `OPTIMIZE TABLE episodes FINAL` — collapse duplicate parts |
+| 05:25 | refit the base model and re-inline it into both views |
+
+Re-extracting a window is idempotent (ReplacingMergeTree keyed on
+`(mint, horizon_s)`, every read through a `FINAL` view), so overlapping runs cost
+a little disk until the next merge and nothing else.
+
+## Deploying to Railway (optional)
+
+Not needed — the box already runs everything and holds the data. This exists only
+if you want the web tier off the box; ClickHouse stays put either way, and you
+would be adding a network hop to it plus a second Postgres.
 
 1. New project → deploy from this repo. `railway.json` points at
    `services/agents/Dockerfile`.

@@ -205,8 +205,16 @@ e.g. Buy coins 60 seconds after launch that have a real X profile, at least 20 d
 
 <script type="module">
 const $ = (s) => document.querySelector(s);
+
+// Directory this page was served from, so the app works both at the origin root
+// and mounted under a prefix (nginx serves it at api.polyx.trade/agents/).
+// Hardcoding "/api/..." would send every request to the polyx feed API instead,
+// which answers on the same host at the root.
+const BASE = location.pathname.replace(/[^/]*$/, "");
+
 const api = async (path, opts) => {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const url = BASE + String(path).replace(/^\//, "");
+  const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
   const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;

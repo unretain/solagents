@@ -25,10 +25,15 @@ ch_read()  { curl -sS --get "$CH_URL" --user "$CH_USER:$CH_PASS" --data-urlencod
 HORIZON=60
 FROM=""; TO=""; MODE=""
 
+RECENT_HOURS=4
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --create)   MODE=create; shift ;;
     --backfill) MODE=backfill; shift ;;
+    --recent)   MODE=recent; RECENT_HOURS=${2:-4};
+                case "$RECENT_HOURS" in ''|*[!0-9]*) RECENT_HOURS=4 ;; *) shift ;; esac
+                shift ;;
     --from)     FROM=$2; MODE=${MODE:-window}; shift 2 ;;
     --to)       TO=$2;   MODE=${MODE:-window}; shift 2 ;;
     -H|--horizon) HORIZON=$2; shift 2 ;;
@@ -62,6 +67,27 @@ case "${MODE:-}" in
   window)
     [ -n "$FROM" ] && [ -n "$TO" ] || { echo "--from and --to required" >&2; exit 2; }
     extract_window "$FROM" "$TO" "$HORIZON"
+    ;;
+
+  # Incremental catch-up, for cron. Re-extracting a window is idempotent
+  # (ReplacingMergeTree keyed on (mint, horizon_s), and every read goes through
+  # a FINAL view), so overlapping runs are safe — they only cost a little disk
+  # until the next merge.
+  recent)
+    create_table
+    LAG=$(( HORIZON + 3600 ))
+    END=$(ch_read "SELECT toStartOfHour(now() - INTERVAL $LAG SECOND)" | tr -d '\r')
+    end_e=$(date -u -d "$END UTC" +%s)
+    cur_e=$(( end_e - RECENT_HOURS * 3600 ))
+    echo "[episodes] recent ${RECENT_HOURS}h ending $END (horizon ${HORIZON}s)"
+    while [ "$cur_e" -lt "$end_e" ]; do
+      nxt_e=$(( cur_e + 3600 ))
+      extract_window \
+        "$(date -u -d "@$cur_e" '+%Y-%m-%d %H:%M:%S')" \
+        "$(date -u -d "@$nxt_e" '+%Y-%m-%d %H:%M:%S')" \
+        "$HORIZON"
+      cur_e=$nxt_e
+    done
     ;;
 
   backfill)
