@@ -5,18 +5,22 @@
  * the validated JSON it produces. If this ever moves into the hot path, the
  * whole reproducibility argument for the backtester collapses.
  */
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import type Anthropic from "@anthropic-ai/sdk";
+// jsonSchemaOutputFormat, not zodOutputFormat: the Zod helper calls
+// `z.toJSONSchema`, which only exists in Zod 4, and this project is on Zod 3.
+// Upgrading Zod to satisfy one helper would put every validator in the codebase
+// through a major-version migration for no gain — the schema below is written
+// once and Zod still does the real validation after the model answers.
+import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
+import { client, modelId, llmConfigured } from "./client.js";
 import { z } from "zod";
 import { FEATURES } from "../strategy/features.js";
 import { strategySchema, explainInvalid, type Strategy } from "../strategy/schema.js";
 
-const client = new Anthropic();
-
 /** Model for strategy compilation. Config, not code, so it can be changed
  *  without a deploy — but the default is the most capable model, because a
  *  misread strategy is a silent loss of the user's money. */
-const MODEL = process.env.COMPILE_MODEL || "claude-opus-5";
+const MODEL = modelId(process.env.COMPILE_MODEL || "claude-opus-5");
 
 /**
  * A LOOSE mirror of the strategy shape.
@@ -47,6 +51,57 @@ const draftSchema = z.object({
     max_total_deployed_sol: z.number(),
   }),
 });
+
+/** The same shape as `draftSchema`, for the model. Kept beside it deliberately —
+ *  if one changes the other must, and the Zod parse right after the call is what
+ *  catches it if they drift. */
+const cond = {
+  type: "object",
+  additionalProperties: false,
+  properties: { feature: { type: "string" }, op: { type: "string" }, value: { type: "string" } },
+  required: ["feature", "op", "value"],
+} as const;
+
+const DRAFT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+    thesis: { type: "string" },
+    decide_at_s: { type: "number", enum: [30, 60, 180] },
+    entry_all: { type: "array", items: cond },
+    entry_any: { type: "array", items: cond },
+    sizing: {
+      type: "object", additionalProperties: false,
+      properties: {
+        mode: { type: "string", enum: ["fixed_sol", "pct_bankroll"] },
+        value: { type: "number" },
+        max_concurrent: { type: "number" },
+      },
+      required: ["mode", "value", "max_concurrent"],
+    },
+    exit: {
+      type: "object", additionalProperties: false,
+      properties: {
+        take_profit_pct: { type: "number" },
+        stop_loss_pct: { type: "number" },
+        trailing_stop_pct: { type: "number" },
+        max_hold_s: { type: "number" },
+      },
+      required: ["take_profit_pct", "stop_loss_pct", "trailing_stop_pct", "max_hold_s"],
+    },
+    risk: {
+      type: "object", additionalProperties: false,
+      properties: {
+        max_position_sol: { type: "number" },
+        max_daily_loss_sol: { type: "number" },
+        max_total_deployed_sol: { type: "number" },
+      },
+      required: ["max_position_sol", "max_daily_loss_sol", "max_total_deployed_sol"],
+    },
+  },
+  required: ["name", "thesis", "decide_at_s", "entry_all", "entry_any", "sizing", "exit", "risk"],
+} as const;
 
 function featureCatalogue(): string {
   return Object.entries(FEATURES)
@@ -93,7 +148,7 @@ export async function compileStrategy(text: string): Promise<CompileResult> {
   // Say what is actually wrong. Without this the SDK throws a generic auth error
   // and the page shows it verbatim, which reads like the feature is broken
   // rather than switched off.
-  if (!(process.env.ANTHROPIC_API_KEY || "").trim()) {
+  if (!llmConfigured()) {
     return {
       ok: false,
       error:
@@ -117,14 +172,14 @@ export async function compileStrategy(text: string): Promise<CompileResult> {
         // $0.005. This is constrained extraction into a fixed schema with a
         // validator and a repair round behind it, not a reasoning problem.
         effort: "low",
-        format: zodOutputFormat(draftSchema),
+        format: jsonSchemaOutputFormat(DRAFT_JSON_SCHEMA),
       },
     });
 
     if (res.stop_reason === "refusal") {
       return { ok: false, error: "The model declined to write this strategy." };
     }
-    const draft = res.parsed_output;
+    const draft = res.parsed_output as z.infer<typeof draftSchema> | null;
     if (!draft) return { ok: false, error: "The model did not return a usable config." };
 
     const parsed = strategySchema.safeParse(coerce(draft));

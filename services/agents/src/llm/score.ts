@@ -9,12 +9,12 @@
  * Backfill goes through the Batches API (50% cost, results within 24h, which is
  * fine for history). Live scoring of brand-new coins uses a direct call.
  */
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+// jsonSchemaOutputFormat, not zodOutputFormat: the Zod helper needs Zod 4
+// (z.toJSONSchema) and this project is on Zod 3. Zod still validates the reply.
+import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
+import { client, modelId, viaOpenRouter } from "./client.js";
 import { z } from "zod";
 import { chQuery, chWrite, lit } from "../clickhouse.js";
-
-const client = new Anthropic();
 
 /**
  * Haiku by explicit budget decision, not by default.
@@ -23,7 +23,7 @@ const client = new Anthropic();
  * here is a coarse four-bucket judgement of presentation quality, which Haiku
  * does well, and the budget for this whole feature is $40.
  */
-const MODEL = process.env.SCORE_MODEL || "claude-haiku-4-5";
+const MODEL = modelId(process.env.SCORE_MODEL || "claude-haiku-4-5");
 const PROMPT_VERSION = 1;
 
 /**
@@ -38,6 +38,17 @@ export async function budgetRemaining(): Promise<number> {
   const [row] = await chQuery<{ n: string }>(`SELECT count() AS n FROM coin_scores FORMAT JSON`);
   return Math.max(0, MAX_SCORED - Number(row?.n ?? 0));
 }
+
+const SCORE_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    score: { type: "number", minimum: 0, maximum: 100 },
+    verdict: { type: "string", enum: ["slop", "generic", "decent", "strong"] },
+    reason: { type: "string" },
+  },
+  required: ["score", "verdict", "reason"],
+} as const;
 
 const scoreSchema = z.object({
   score: z.number().min(0).max(100),
@@ -104,13 +115,13 @@ export async function scoreOne(m: CoinMeta): Promise<z.infer<typeof scoreSchema>
     max_tokens: 1000,
     system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: promptFor(m, desc) }],
-    output_config: { format: zodOutputFormat(scoreSchema) },
+    output_config: { effort: "low", format: jsonSchemaOutputFormat(SCORE_JSON_SCHEMA) },
   });
   if (res.stop_reason === "refusal") return null;
-  const out = res.parsed_output;
-  if (!out) return null;
-  await persist(m.mint, out, !!desc);
-  return out;
+  const out = scoreSchema.safeParse(res.parsed_output);
+  if (!out.success) return null;
+  await persist(m.mint, out.data, !!desc);
+  return out.data;
 }
 
 async function persist(mint: string, s: z.infer<typeof scoreSchema>, hadDesc: boolean): Promise<void> {
@@ -160,6 +171,16 @@ export async function unscored(limit = 500): Promise<CoinMeta[]> {
  * complete within 24h, which suits history backfill and does not suit live.
  */
 export async function submitBatch(coins: CoinMeta[]): Promise<string> {
+  // OpenRouter implements the Messages API but not the Batches API. Fail with a
+  // sentence rather than a 404 from a path that looks like it should exist.
+  // `node dist/jobs/score.js` uses scoreOne() sequentially and works either way;
+  // it just pays full rate instead of the batch discount.
+  if (viaOpenRouter) {
+    throw new Error(
+      "The Batches API is not available through OpenRouter. Run the sequential " +
+        "scorer (node dist/jobs/score.js) instead, or use a direct Anthropic key.",
+    );
+  }
   const descs = await Promise.all(coins.map((c) => description(c.uri)));
   const batch = await client.messages.batches.create({
     requests: coins.map((c, i) => ({
@@ -169,7 +190,7 @@ export async function submitBatch(coins: CoinMeta[]): Promise<string> {
         max_tokens: 1000,
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: promptFor(c, descs[i]) }],
-        output_config: { format: zodOutputFormat(scoreSchema) },
+        output_config: { effort: "low", format: jsonSchemaOutputFormat(SCORE_JSON_SCHEMA) },
       },
     })),
   });
