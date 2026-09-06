@@ -12,7 +12,7 @@ import { startPaperEngine } from "./paper.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
 import { runBacktest } from "./backtest/run.js";
-import { q, newId } from "./db.js";
+import { q, newId, migrate } from "./db.js";
 import { chQuery } from "./clickhouse.js";
 
 // Boot-time gate. A feature that exists in SQL but not live (or the reverse)
@@ -300,6 +300,18 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // Railway (and most PaaS) inject PORT and expect the process to bind it on all
 // interfaces. AGENTS_PORT stays as the local/systemd fallback.
 const PORT = Number(process.env.PORT || process.env.AGENTS_PORT || 3002);
+
+// Migrate BEFORE listening. Serving traffic against a database without the
+// tables would return 500s from a deploy that otherwise looks healthy, and
+// Railway's healthcheck hits /health (which needs no tables) so nothing would
+// catch it.
+try {
+  await migrate();
+} catch (e) {
+  console.error("[db] migration failed:", (e as Error).message);
+  process.exit(1);
+}
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`solagents API on :${PORT}`);
   // Off by default so multiple instances (a Railway deploy plus the box) cannot

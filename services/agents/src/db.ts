@@ -25,3 +25,25 @@ export async function q<T = unknown>(sql: string, params: unknown[] = []): Promi
 export function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
+
+/**
+ * Apply the schema on boot.
+ *
+ * Every statement is CREATE ... IF NOT EXISTS or ADD COLUMN IF NOT EXISTS, so
+ * this is idempotent and safe to run on every deploy. It exists so a fresh
+ * Railway Postgres works without a manual psql step — the failure it prevents is
+ * a deploy that boots green and then 500s on the first request.
+ */
+export async function migrate(): Promise<void> {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const dir = process.env.PG_SQL_DIR || "postgres";
+  for (const f of ["01_schema.sql", "02_paper.sql"]) {
+    const path = `${dir}/${f}`;
+    if (!existsSync(path)) {
+      console.warn(`[db] ${path} not found — skipping migration`);
+      continue;
+    }
+    await pool.query(readFileSync(path, "utf8"));
+    console.log(`[db] applied ${f}`);
+  }
+}
