@@ -12,7 +12,7 @@ import { startPaperEngine } from "./paper.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
 import { runBacktest } from "./backtest/run.js";
-import { q, newId, migrate } from "./db.js";
+import { q, newId, migrate, describeError } from "./db.js";
 import { chQuery } from "./clickhouse.js";
 
 // Boot-time gate. A feature that exists in SQL but not live (or the reverse)
@@ -308,7 +308,14 @@ const PORT = Number(process.env.PORT || process.env.AGENTS_PORT || 3002);
 try {
   await migrate();
 } catch (e) {
-  console.error("[db] migration failed:", (e as Error).message);
+  console.error(`[db] migration failed: ${describeError(e)}`);
+  console.error(
+    "[db] required variables: DATABASE_URL (Postgres), CLICKHOUSE_URL, CLICKHOUSE_PASSWORD.",
+  );
+  // Sleep before exiting. Railway restarts a crashed container immediately, and
+  // an instant exit loop buries the one line that explains the failure under
+  // hundreds of restarts.
+  await new Promise((r) => setTimeout(r, 5000));
   process.exit(1);
 }
 
