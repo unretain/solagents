@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>solagents — train trading agents on live Solana data</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#12151a; --panel-2:#171b22; --line:#232833;
+    --ink:#e6e9ef; --dim:#8b94a5; --faint:#5b6474;
+    --up:#3ddc97; --down:#ff5c72; --accent:#7aa2ff; --warn:#ffb45c;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  a{color:var(--accent)}
+  header{border-bottom:1px solid var(--line);padding:14px 20px;display:flex;
+    align-items:baseline;gap:20px;flex-wrap:wrap}
+  header h1{margin:0;font-size:16px;letter-spacing:-.01em}
+  header h1 span{color:var(--faint);font-weight:400}
+  .stats{margin-left:auto;display:flex;gap:18px;font:12px/1 var(--mono);color:var(--dim)}
+  .stats b{color:var(--ink);font-weight:600}
+
+  .wrap{max-width:1400px;margin:0 auto;padding:20px;display:grid;
+    grid-template-columns:minmax(360px,440px) 1fr;gap:20px;align-items:start}
+  @media(max-width:980px){.wrap{grid-template-columns:1fr}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .card > h2{margin:0;padding:12px 16px;font-size:13px;font-weight:600;
+    border-bottom:1px solid var(--line);background:var(--panel-2);letter-spacing:.01em}
+  .card .body{padding:16px}
+
+  textarea{width:100%;min-height:110px;resize:vertical;background:#0e1116;color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:11px 12px;font:13px/1.55 inherit}
+  textarea:focus,select:focus,input:focus{outline:none;border-color:var(--accent)}
+  .hint{color:var(--faint);font-size:12px;margin:8px 0 0}
+
+  button{background:var(--accent);color:#08101f;border:0;border-radius:7px;
+    padding:9px 15px;font-weight:650;font-size:13px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+  button.ghost:hover:not(:disabled){color:var(--ink);border-color:var(--faint)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row + .row{margin-top:10px}
+
+  /* filter builder */
+  .filters{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .filter{display:grid;grid-template-columns:1fr 78px 1fr auto;gap:6px;align-items:center}
+  select,input{background:#0e1116;color:var(--ink);border:1px solid var(--line);
+    border-radius:6px;padding:7px 8px;font:12px/1.3 var(--mono);width:100%}
+  .filter button{background:transparent;color:var(--faint);border:0;padding:4px 7px;font-size:15px}
+  .filter button:hover{color:var(--down)}
+  .doc{color:var(--faint);font-size:11.5px;margin:-2px 0 4px;grid-column:1/-1}
+
+  /* results */
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));
+    gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .metric{background:var(--panel);padding:12px 14px}
+  .metric .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  .metric .v{font:600 19px/1.25 var(--mono);margin-top:3px;font-variant-numeric:tabular-nums}
+  .up{color:var(--up)} .down{color:var(--down)} .warnc{color:var(--warn)}
+
+  table{width:100%;border-collapse:collapse;font:12px/1.45 var(--mono);
+    font-variant-numeric:tabular-nums}
+  th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;
+    letter-spacing:.04em;position:sticky;top:0;background:var(--panel-2)}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr:hover{background:var(--panel-2)}
+  .scroll{max-height:420px;overflow:auto}
+
+  .tabs{display:flex;gap:2px;padding:10px 16px 0}
+  .tab{background:transparent;color:var(--dim);border:1px solid transparent;
+    border-bottom:0;border-radius:7px 7px 0 0;padding:7px 14px;font-size:12.5px;font-weight:550}
+  .tab[aria-selected=true]{background:var(--panel);color:var(--ink);
+    border-color:var(--line)}
+
+  .note{border-left:2px solid var(--warn);background:#1a1710;color:#e8d9bd;
+    padding:9px 12px;border-radius:0 6px 6px 0;font-size:12.5px;margin-top:10px}
+  .err{border-left-color:var(--down);background:#1d1114;color:#f3c9d0}
+  .empty{color:var(--faint);padding:26px 16px;text-align:center;font-size:13px}
+  code{font:12px var(--mono);background:#0e1116;padding:1px 5px;border-radius:4px;color:var(--dim)}
+  details summary{cursor:pointer;color:var(--dim);font-size:12px;padding:6px 0}
+  pre{font:11.5px/1.5 var(--mono);color:var(--dim);background:#0e1116;padding:10px;
+    border-radius:6px;overflow:auto;margin:6px 0 0}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--faint);
+    vertical-align:1px;margin:0 2px}
+  .dot.on{background:var(--up);box-shadow:0 0 0 0 rgba(61,220,151,.7);animation:p 2s infinite}
+  @keyframes p{70%{box-shadow:0 0 0 6px rgba(61,220,151,0)}100%{box-shadow:0 0 0 0 rgba(61,220,151,0)}}
+  tr.fresh{animation:flash 1.4s ease-out}
+  @keyframes flash{from{background:#16302a}to{background:transparent}}
+  .pill{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10.5px;
+    background:#1c2230;color:var(--dim)}
+  .pill.profile{background:#16302a;color:var(--up)}
+  .pill.status,.pill.search{background:#2e2015;color:var(--warn)}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--faint);
+    border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite;
+    vertical-align:-1px;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>solagents <span>— train trading agents on live Solana data</span></h1>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="wrap">
+  <!-- ─────────────────────────── build ─────────────────────────── -->
+  <div class="card">
+    <h2>Build a strategy</h2>
+    <div class="body">
+      <textarea id="prompt" placeholder="Describe your strategy in plain English.
+
+e.g. Buy coins 60 seconds after launch that have a real X profile, at least 20 different traders, more buying than selling, and where the dev hasn't sold. Take profit at 40%, stop out at 20%, never hold longer than 5 minutes."></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="compile">Compile with AI</button>
+        <button class="ghost" id="addFilter">Add filter manually</button>
+      </div>
+      <p class="hint">The AI writes the config once, when you save. What actually
+        trades is the config — so a backtest and a live run make identical decisions.</p>
+
+      <div id="compileMsg"></div>
+
+      <div id="builder" hidden>
+        <div class="row" style="margin-top:16px">
+          <input id="name" placeholder="Strategy name" style="flex:1">
+          <select id="horizon" style="width:auto">
+            <option value="30">decide at 30s</option>
+            <option value="60" selected>decide at 60s</option>
+            <option value="180">decide at 180s</option>
+          </select>
+        </div>
+        <div class="filters" id="filters"></div>
+
+        <div class="row" style="margin-top:14px">
+          <label class="hint" style="flex:1">Take profit %<input id="tp" type="number" value="40" min="1"></label>
+          <label class="hint" style="flex:1">Stop loss %<input id="sl" type="number" value="20" min="1" max="100"></label>
+        </div>
+        <div class="row">
+          <label class="hint" style="flex:1">Trailing stop %<input id="tr" type="number" placeholder="off" min="1" max="100"></label>
+          <label class="hint" style="flex:1">Max hold (s)<input id="hold" type="number" value="300" min="5"></label>
+        </div>
+        <div class="row">
+          <label class="hint" style="flex:1">Size per trade (SOL)<input id="size" type="number" value="0.5" step="0.1" min="0.01"></label>
+          <label class="hint" style="flex:1">Max concurrent<input id="conc" type="number" value="5" min="1" max="50"></label>
+        </div>
+
+        <div class="row" style="margin-top:14px">
+          <button id="run">Backtest</button>
+          <button class="ghost" id="publish" disabled>Publish to leaderboard</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── results ────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div class="card">
+      <h2>Backtest</h2>
+      <div class="body" id="results">
+        <div class="empty">Describe a strategy and run a backtest to see how it would have done.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>
+        Live <span class="dot" id="liveDot"></span>
+        <span id="liveLabel" style="font-weight:400;color:var(--faint)">— coins being picked up right now</span>
+      </h2>
+      <div class="tabs" role="tablist" style="padding-bottom:0">
+        <button class="tab lv" role="tab" data-live="picks" aria-selected="true">Strategy picks</button>
+        <button class="tab lv" role="tab" data-live="tape" aria-selected="false">All launches</button>
+        <button class="tab lv" role="tab" data-live="draft" aria-selected="false">My draft</button>
+      </div>
+      <div id="live"><div class="empty">Connecting…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-mode="backtest" aria-selected="true">Backtest</button>
+        <button class="tab" role="tab" data-mode="paper" aria-selected="false">Paper</button>
+        <button class="tab" role="tab" data-mode="live" aria-selected="false">Live</button>
+      </div>
+      <div id="board"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const api = async (path, opts) => {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+};
+const num = (n, d = 2) => (n === null || n === undefined || Number.isNaN(+n) ? "—" : (+n).toFixed(d));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+let FEATURES = [];
+let lastStrategy = null;
+
+// ── header stats ──────────────────────────────────────────────────
+api("/api/stats").then((s) => {
+  $("#stats").innerHTML = `
+    <div><b>${(+s.episodes || 0).toLocaleString()}</b> episodes</div>
+    <div><b>${(+s.coins || 0).toLocaleString()}</b> coins</div>
+    <div><b>${(+s.scored || 0).toLocaleString()}</b> AI-scored</div>
+    <div>latest <b>${esc((s.newest || "").slice(5, 16))}</b></div>`;
+}).catch(() => {});
+
+// ── filter builder, driven entirely by /api/features ───────────────
+await api("/api/features").then((f) => (FEATURES = f)).catch(() => {});
+
+const NUM_OPS = [["gte", "≥"], ["gt", ">"], ["lte", "≤"], ["lt", "<"], ["eq", "="], ["neq", "≠"]];
+
+function filterRow(feature = "n_traders", op = "gte", value = "20") {
+  const el = document.createElement("div");
+  el.className = "filter";
+  const def = FEATURES.find((f) => f.name === feature) || FEATURES[0];
+  el.innerHTML = `
+    <select class="f">${FEATURES.map((f) => `<option value="${f.name}"${f.name === feature ? " selected" : ""}>${f.name}</option>`).join("")}</select>
+    <select class="o"></select>
+    <span class="vwrap"></span>
+    <button title="remove">×</button>`;
+  const sync = () => {
+    const d = FEATURES.find((f) => f.name === el.querySelector(".f").value);
+    const o = el.querySelector(".o"), v = el.querySelector(".vwrap");
+    if (d.kind === "enum") {
+      o.innerHTML = `<option value="in">is</option><option value="nin">is not</option>`;
+      v.innerHTML = `<select class="v">${d.values.map((x) => `<option>${x}</option>`).join("")}</select>`;
+    } else if (d.kind === "bool") {
+      o.innerHTML = `<option value="is">is</option>`;
+      v.innerHTML = `<select class="v"><option value="true">true</option><option value="false">false</option></select>`;
+    } else {
+      o.innerHTML = NUM_OPS.map(([k, s]) => `<option value="${k}">${s}</option>`).join("");
+      v.innerHTML = `<input class="v" type="number" step="any" value="${esc(value)}">`;
+    }
+    el.querySelector(".doc")?.remove();
+    const doc = document.createElement("div");
+    doc.className = "doc"; doc.textContent = d.doc;
+    el.appendChild(doc);
+  };
+  el.querySelector(".f").onchange = sync;
+  el.querySelector("button").onclick = () => el.remove();
+  sync();
+  if (def && def.kind === "number") el.querySelector(".o").value = op;
+  return el;
+}
+
+$("#addFilter").onclick = () => {
+  $("#builder").hidden = false;
+  $("#filters").appendChild(filterRow());
+};
+
+function readBuilder() {
+  const entry_all = [...$("#filters").querySelectorAll(".filter")].map((el) => {
+    const feature = el.querySelector(".f").value;
+    const op = el.querySelector(".o").value;
+    const raw = el.querySelector(".v").value;
+    const d = FEATURES.find((f) => f.name === feature);
+    const value = d.kind === "enum" ? [raw] : d.kind === "bool" ? raw === "true" : Number(raw);
+    return { feature, op, value };
+  });
+  const tr = $("#tr").value ? Number($("#tr").value) : undefined;
+  return {
+    version: 1,
+    name: $("#name").value || "Untitled strategy",
+    thesis: lastStrategy?.thesis || "",
+    decide_at_s: Number($("#horizon").value),
+    entry_all, entry_any: [],
+    sizing: { mode: "fixed_sol", value: Number($("#size").value), max_concurrent: Number($("#conc").value) },
+    exit: {
+      take_profit_pct: Number($("#tp").value) || undefined,
+      stop_loss_pct: Number($("#sl").value) || undefined,
+      trailing_stop_pct: tr,
+      max_hold_s: Number($("#hold").value),
+    },
+    risk: {
+      max_position_sol: Math.max(Number($("#size").value), 1),
+      max_daily_loss_sol: 5,
+      max_total_deployed_sol: 25,
+    },
+  };
+}
+
+function writeBuilder(s) {
+  $("#builder").hidden = false;
+  $("#name").value = s.name;
+  $("#horizon").value = String(s.decide_at_s);
+  $("#filters").innerHTML = "";
+  for (const c of [...s.entry_all, ...s.entry_any]) {
+    const v = Array.isArray(c.value) ? c.value[0] : c.value;
+    const row = filterRow(c.feature, c.op, String(v));
+    $("#filters").appendChild(row);
+    row.querySelector(".o").value = c.op;
+    row.querySelector(".v").value = String(v);
+  }
+  $("#tp").value = s.exit.take_profit_pct ?? "";
+  $("#sl").value = s.exit.stop_loss_pct ?? "";
+  $("#tr").value = s.exit.trailing_stop_pct ?? "";
+  $("#hold").value = s.exit.max_hold_s;
+  $("#size").value = s.sizing.value;
+  $("#conc").value = s.sizing.max_concurrent;
+}
+
+// ── compile ───────────────────────────────────────────────────────
+$("#compile").onclick = async () => {
+  const text = $("#prompt").value.trim();
+  if (!text) return;
+  const btn = $("#compile");
+  btn.disabled = true; btn.innerHTML = `<span class="spin"></span>Compiling`;
+  $("#compileMsg").innerHTML = "";
+  try {
+    const r = await api("/api/compile", { method: "POST", body: JSON.stringify({ text }) });
+    if (!r.ok) {
+      $("#compileMsg").innerHTML = `<div class="note err">${esc(r.error)}</div>`;
+    } else {
+      lastStrategy = r.strategy;
+      writeBuilder(r.strategy);
+      $("#compileMsg").innerHTML = `<div class="note">${esc(r.strategy.thesis)}</div>`;
+    }
+  } catch (e) {
+    $("#compileMsg").innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Compile with AI";
+  }
+};
+
+// ── backtest ──────────────────────────────────────────────────────
+$("#run").onclick = async () => {
+  const strategy = readBuilder();
+  const btn = $("#run");
+  btn.disabled = true; btn.innerHTML = `<span class="spin"></span>Running`;
+  try {
+    const r = await api("/api/backtest", { method: "POST", body: JSON.stringify({ strategy }) });
+    lastStrategy = strategy;
+    renderResults(r);
+    $("#publish").disabled = r.nTrades === 0;
+  } catch (e) {
+    $("#results").innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Backtest";
+  }
+};
+
+function renderResults(r) {
+  const cls = (v, inv = false) => (v > 0 ? (inv ? "down" : "up") : v < 0 ? (inv ? "up" : "down") : "");
+  const m = (k, v, c = "") => `<div class="metric"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
+
+  const warnings = (r.warnings || []).map((w) => `<div class="note">${esc(w)}</div>`).join("");
+
+  if (!r.nTrades) {
+    $("#results").innerHTML = `<div class="empty">No episodes matched these filters.</div>${warnings}`;
+    return;
+  }
+
+  const exits = Object.entries(r.exitBreakdown || {})
+    .map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ");
+
+  $("#results").innerHTML = `
+    <div class="metrics">
+      ${m("Trades", r.nTrades.toLocaleString())}
+      ${m("Win rate", num(r.winPct, 1) + "%")}
+      ${m("Per-trade", "×" + num(r.geoMult, 3), cls(r.geoMult - 1))}
+      ${m("Net PnL", num(r.totalPnlSol, 2) + " SOL", cls(r.totalPnlSol))}
+      ${m("Max drawdown", num(r.maxDrawdownSol, 2) + " SOL", "down")}
+      ${m("Avg hold", num(r.avgHoldS, 0) + "s")}
+      ${m("Volume", num(r.volumeSol, 1) + " SOL")}
+    </div>
+    <p class="hint" style="margin-top:10px">
+      <b>Per-trade</b> is the geometric mean multiple — the number that compounds.
+      Above 1.000 is profitable after fees and modelled slippage. Exits: ${esc(exits)}.
+    </p>
+    ${warnings}
+    <details style="margin-top:8px"><summary>Compiled filter</summary><pre>${esc(r.sql || "")}</pre></details>
+    <div class="scroll" style="margin-top:12px">
+      <table>
+        <thead><tr><th>Coin</th><th>When</th><th>Held</th><th>Exit</th><th>Mult</th><th>PnL</th></tr></thead>
+        <tbody>${r.trades.map((t) => `
+          <tr>
+            <td>${esc(t.symbol || t.mint.slice(0, 6))}</td>
+            <td>${esc(t.t0.slice(5, 16))}</td>
+            <td>${t.heldS}s</td>
+            <td>${esc(t.reason.replace(/_/g, " "))}</td>
+            <td class="${cls(t.mult - 1)}">×${num(t.mult, 2)}</td>
+            <td class="${cls(t.pnlSol)}">${num(t.pnlSol, 3)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ── publish ───────────────────────────────────────────────────────
+$("#publish").onclick = async () => {
+  const btn = $("#publish");
+  btn.disabled = true; btn.innerHTML = `<span class="spin"></span>Publishing`;
+  try {
+    await api("/api/strategies", {
+      method: "POST",
+      body: JSON.stringify({ strategy: readBuilder(), prompt: $("#prompt").value, isPublic: true }),
+    });
+    loadBoard(document.querySelector(".tab[aria-selected=true]").dataset.mode);
+    btn.textContent = "Published ✓";
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false; btn.textContent = "Publish to leaderboard";
+  }
+};
+
+// ── leaderboard ───────────────────────────────────────────────────
+async function loadBoard(mode) {
+  $("#board").innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const rows = await api(`/api/leaderboard?mode=${mode}`);
+    if (!rows.length) {
+      $("#board").innerHTML = `<div class="empty">${
+        mode === "backtest"
+          ? "No published strategies yet with at least 30 trades."
+          : `No ${mode} runs yet.`}</div>`;
+      return;
+    }
+    const perf = mode === "backtest"
+      ? `<th>Per-trade</th>` : `<th>Status</th>`;
+    $("#board").innerHTML = `
+      <div class="scroll"><table>
+        <thead><tr><th>#</th><th>Strategy</th><th>Trades</th><th>Win</th>${perf}<th>PnL</th><th>Volume</th></tr></thead>
+        <tbody>${rows.map((r, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td title="${esc(r.thesis)}">${esc(r.name)}</td>
+            <td>${(+r.n_trades).toLocaleString()}</td>
+            <td>${num(r.win_pct, 1)}%</td>
+            <td>${mode === "backtest"
+              ? `<span class="${+r.geo_mult > 1 ? "up" : "down"}">×${num(r.geo_mult, 3)}</span>`
+              : `${esc(r.status)}${r.halt_reason ? ` <span class="warnc">(${esc(r.halt_reason)})</span>` : ""}`}</td>
+            <td class="${+r.total_pnl_sol > 0 ? "up" : +r.total_pnl_sol < 0 ? "down" : ""}">${num(r.total_pnl_sol, 2)}</td>
+            <td>${num(r.volume_sol, 1)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table></div>`;
+  } catch (e) {
+    $("#board").innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll(".tab[data-mode]").forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll(".tab[data-mode]").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+    loadBoard(t.dataset.mode);
+  };
+});
+loadBoard("backtest");
+
+// ── live ──────────────────────────────────────────────────────────
+let liveMode = "picks";
+const seen = new Set();
+
+document.querySelectorAll(".tab.lv").forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll(".tab.lv").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+    liveMode = t.dataset.live;
+    seen.clear();
+    tickLive();
+  };
+});
+
+function renderLive(rows, note) {
+  if (!rows.length) {
+    $("#live").innerHTML = `<div class="empty">${esc(note)}</div>`;
+    return;
+  }
+  const showStrat = rows.some((r) => r.strategyName);
+  $("#live").innerHTML = `
+    <div class="scroll" style="max-height:300px"><table>
+      <thead><tr>
+        <th>Coin</th>${showStrat ? "<th>Picked by</th>" : ""}<th>Age</th><th>Traders</th>
+        <th>Vol</th><th>Buy%</th><th>Fees</th><th>X</th><th>MCap</th>
+      </tr></thead>
+      <tbody>${rows.map((r) => {
+        const isNew = !seen.has(r.mint + r.horizonS);
+        seen.add(r.mint + r.horizonS);
+        return `<tr class="${isNew ? "fresh" : ""}">
+          <td>${esc(r.symbol || r.mint.slice(0, 6))}</td>
+          ${showStrat ? `<td>${esc(r.strategyName || "")}</td>` : ""}
+          <td>${r.ageS}s</td>
+          <td>${r.nTraders}</td>
+          <td>${num(r.volSol, 1)}</td>
+          <td>${num(r.buyRatio * 100, 0)}%</td>
+          <td>${num(r.feesSol, 3)}</td>
+          <td><span class="pill ${esc(r.twitterKind)}">${esc(r.twitterKind)}</span></td>
+          <td>${num(r.mcapSol, 1)}</td>
+        </tr>`;
+      }).join("")}
+      </tbody>
+    </table></div>`;
+}
+
+async function tickLive() {
+  try {
+    let rows, note;
+    if (liveMode === "tape") {
+      rows = await api("/api/live/tape");
+      note = "Feed is quiet — no launches in the last 40 minutes.";
+    } else if (liveMode === "draft") {
+      if ($("#builder").hidden) { renderLive([], "Build a strategy first, then watch it fire live."); return; }
+      rows = await api("/api/live/test", { method: "POST", body: JSON.stringify({ strategy: readBuilder() }) });
+      note = "Your draft hasn't matched anything in the last 15 minutes.";
+    } else {
+      rows = await api("/api/live/picks");
+      note = "No published strategy has matched recently. Publish one, or watch All launches.";
+    }
+    renderLive(rows, note);
+    $("#liveDot").className = "dot on";
+    $("#liveLabel").textContent = `— ${rows.length} in the last 15 min`;
+  } catch (e) {
+    $("#liveDot").className = "dot";
+    $("#liveLabel").textContent = "— disconnected";
+  }
+}
+tickLive();
+setInterval(tickLive, 5000);
+</script>
+</body>
+</html>
