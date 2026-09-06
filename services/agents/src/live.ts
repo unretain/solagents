@@ -57,6 +57,57 @@ export async function livePicks(s: Strategy, freshS = 900, limit = 50): Promise<
     FORMAT JSON`);
 }
 
+export interface LiveTx {
+  mint: string;
+  symbol: string;
+  image: string;
+  ts: string;
+  isBuy: number;
+  solAmount: number;
+  priceSol: number;
+  trader: string;
+}
+
+/**
+ * The raw firehose: every trade the platform is scanning, newest first.
+ *
+ * This is what the agents actually see. It is deliberately unfiltered — roughly
+ * 30 trades a second across ~57 coins — because "what is it looking at" and
+ * "what did it pick" are different questions, and only showing picks makes a
+ * quiet minute indistinguishable from a broken feed.
+ *
+ * The inner LIMIT runs before the join so only ~60 rows are ever decorated with
+ * token metadata, which keeps this at ~25ms even though `trades` is 25M rows.
+ */
+export async function liveTrades(limit = 60): Promise<LiveTx[]> {
+  return chQuery<LiveTx>(`
+    SELECT t.mint AS mint, ifNull(k.symbol,'') AS symbol, ifNull(k.image,'') AS image,
+           toString(t.ts) AS ts, t.is_buy AS isBuy,
+           round(t.sol_amount, 4) AS solAmount, t.price_sol AS priceSol, t.trader AS trader
+    FROM (
+      SELECT mint, ts, seq, is_buy, sol_amount, price_sol, trader
+      FROM trades
+      WHERE ts > now() - INTERVAL 60 SECOND
+      ORDER BY ts DESC, seq DESC
+      LIMIT ${limit}
+    ) AS t
+    LEFT JOIN (
+      SELECT mint, argMax(symbol, ingested_at) AS symbol, argMax(image, ingested_at) AS image
+      FROM tokens GROUP BY mint
+    ) AS k ON t.mint = k.mint
+    ORDER BY ts DESC
+    FORMAT JSON`);
+}
+
+/** Headline counters for the scanner: rate, coins, SOL in the last 10s. */
+export async function scanRate(): Promise<{ trades: number; coins: number; sol: number }> {
+  const [r] = await chQuery<{ trades: number; coins: number; sol: number }>(`
+    SELECT count() AS trades, uniqExact(mint) AS coins, round(sum(sol_amount),1) AS sol
+    FROM trades WHERE ts > now() - INTERVAL 10 SECOND
+    FORMAT JSON`);
+  return r ?? { trades: 0, coins: 0, sol: 0 };
+}
+
 /** Everything happening right now, regardless of strategy — the "what is the
  *  feed even doing" panel, so an empty picks list can be told apart from a
  *  stalled feed. */

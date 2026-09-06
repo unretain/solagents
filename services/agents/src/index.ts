@@ -7,8 +7,9 @@ import { z } from "zod";
 
 import { FEATURES } from "./strategy/features.js";
 import { strategySchema, explainInvalid, type Strategy } from "./strategy/schema.js";
-import { livePicks, liveTape, publishedPicks } from "./live.js";
+import { livePicks, liveTape, publishedPicks, liveTrades, scanRate } from "./live.js";
 import { startPaperEngine } from "./paper.js";
+import { TP_MULT, SL_MULT } from "./model/spec.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
 import { runBacktest } from "./backtest/run.js";
@@ -188,6 +189,84 @@ app.get("/api/leaderboard", async (req, res, next) => {
  *  picks list be told apart from a stalled feed. */
 app.get("/api/live/tape", async (_req, res, next) => {
   try { res.json(await liveTape()); } catch (e) { next(e); }
+});
+
+/** The raw firehose: every transaction being scanned, with coin images. */
+app.get("/api/live/trades", async (_req, res, next) => {
+  try {
+    const [trades, rate] = await Promise.all([liveTrades(60), scanRate()]);
+    res.json({ trades, rate });
+  } catch (e) { next(e); }
+});
+
+/**
+ * The base model card: what it predicts, how well, and what it learned.
+ *
+ * Calibration is recomputed live against held-out episodes rather than stored,
+ * so the page shows how the model is doing on data it has never seen — which is
+ * the only version of the number worth showing anyone.
+ */
+app.get("/api/model", async (_req, res, next) => {
+  try {
+    const [card] = await q<Record<string, unknown>>(
+      `SELECT * FROM sa_model ORDER BY trained_at DESC LIMIT 1`,
+    );
+    if (!card) return res.json({ trained: false });
+
+    const calibration = await chQuery<{ bucket: number; n: number; actual: number }>(`
+      WITH
+        arrayFirstIndex(x -> x >= e.px_at_h * ${TP_MULT}, p.pxs) AS up_i,
+        arrayFirstIndex(x -> x <= e.px_at_h * ${SL_MULT}, p.pxs) AS dn_i,
+        toUInt8(if(up_i=0,99999,up_i) < if(dn_i=0,99999,dn_i)) AS y
+      SELECT floor(e.model_score*10)/10 AS bucket, count() AS n, round(100*avg(y),2) AS actual
+      FROM episodes_enriched AS e
+      INNER JOIN (SELECT mint, horizon_s, pxs FROM episode_paths FINAL) AS p
+        ON e.mint = p.mint AND e.horizon_s = p.horizon_s
+      WHERE e.horizon_s = ${Number(card.horizon_s) || 60} AND e.px_at_h > 0
+        AND e.t0 > toDateTime64('${String(card.train_cutoff).replace(/'/g, "")}', 3)
+      GROUP BY bucket ORDER BY bucket
+      FORMAT JSON`);
+
+    // Its current best live candidates, so the page is not just history.
+    const picks = await chQuery(`
+      SELECT mint, symbol, age_now_s AS ageS, n_traders AS nTraders,
+             round(vol_sol,2) AS volSol, twitter_kind AS twitterKind,
+             round(model_score,3) AS score
+      FROM live_episodes
+      WHERE horizon_s = ${Number(card.horizon_s) || 60} AND n_trades >= 3
+      ORDER BY model_score DESC LIMIT 10 FORMAT JSON`);
+
+    res.json({ trained: true, ...card, calibration, picks });
+  } catch (e) { next(e); }
+});
+
+/** Strategies with their latest backtest and their live paper performance. */
+app.get("/api/agents", async (_req, res, next) => {
+  try {
+    res.json(await q(`
+      SELECT s.id, s.name, s.thesis, s.prompt, s.config, s.created_at,
+             b.n_trades AS bt_trades, b.win_pct AS bt_win, b.geo_mult AS bt_geo,
+             b.total_pnl_sol AS bt_pnl,
+             r.id AS run_id, r.status AS run_status, r.halt_reason,
+             coalesce(p.n_closed, 0)  AS paper_trades,
+             coalesce(p.pnl, 0)       AS paper_pnl,
+             coalesce(p.win_pct, 0)   AS paper_win,
+             coalesce(p.n_open, 0)    AS paper_open
+      FROM sa_strategy s
+      LEFT JOIN LATERAL (
+        SELECT * FROM sa_backtest b2 WHERE b2.strategy_id = s.id
+        ORDER BY b2.created_at DESC LIMIT 1) b ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT * FROM sa_run r2 WHERE r2.strategy_id = s.id
+        ORDER BY r2.started_at DESC LIMIT 1) r ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT count(*) FILTER (WHERE closed_at IS NOT NULL)               AS n_closed,
+               count(*) FILTER (WHERE closed_at IS NULL)                   AS n_open,
+               coalesce(sum(pnl_sol), 0)                                   AS pnl,
+               coalesce(avg((pnl_sol > 0)::int) FILTER (WHERE closed_at IS NOT NULL), 0) * 100 AS win_pct
+        FROM sa_position WHERE run_id = r.id) p ON TRUE
+      ORDER BY s.created_at DESC LIMIT 100`));
+  } catch (e) { next(e); }
 });
 
 /** Live matches for a draft strategy the user has not saved yet. */

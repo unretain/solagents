@@ -143,6 +143,31 @@ kept.map((n2, j) => [n2, w[j]] as const)
 mkdirSync("models", { recursive: true });
 writeFileSync("models/base_model.json", JSON.stringify(model, null, 2));
 
+// Also record the card in Postgres, so the UI can show what the model is and how
+// it scored without reading a file that only exists on the training machine.
+try {
+  const { q } = await import("../db.js");
+  await q(
+    `INSERT INTO sa_model (horizon_s, n_train, n_test, base_rate, auc, top10_rate,
+                           top10_lift, train_cutoff, features, label)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      horizon, Ztr.length, Zte.length, baseRate, auc, topRate,
+      model.metrics.top10Lift, cutoff,
+      JSON.stringify(
+        kept.map((n2, j) => ({ name: n2, weight: w[j] }))
+          .sort((a, b2) => Math.abs(b2.weight) - Math.abs(a.weight)),
+      ),
+      `reached +${Math.round((TP_MULT - 1) * 100)}% before falling ${Math.round((SL_MULT - 1) * 100)}%, within 10 minutes of entry`,
+    ],
+  );
+  console.log("[train] model card written to sa_model");
+} catch (e) {
+  // Training already succeeded and the views are updated; failing to record the
+  // card is cosmetic and must not undo that.
+  console.error("[train] could not write model card:", (e as Error).message);
+}
+
 // ── publish: rebuild both views with the score inlined ─────────────────
 const expr = modelScoreSql(model);
 await rebuildViews(expr);
