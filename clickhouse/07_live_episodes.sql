@@ -110,7 +110,10 @@ SELECT
     ifNull(hl.n, 0)                                          AS handle_launch_count,
     ifNull(s.llm_score, 0)                                   AS llm_score,
     ifNull(s.llm_verdict, 'unscored')                        AS llm_verdict,
-    ifNull(s.llm_reason, '')                                 AS llm_reason
+    ifNull(s.llm_reason, '')                                 AS llm_reason,
+    -- Same inlined model expression as episodes_enriched, written by the same
+    -- training run. This is why a live pick and a backtest hit agree.
+    {{MODEL_SCORE_EXPR}} AS model_score
 FROM agg AS a
 LEFT JOIN concentration AS c ON a.mint = c.mint AND a.horizon_s = c.horizon_s
 LEFT JOIN tok AS tk ON a.mint = tk.mint

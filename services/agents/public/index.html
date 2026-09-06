@@ -166,6 +166,20 @@ e.g. Buy coins 60 seconds after launch that have a real X profile, at least 20 d
     </div>
 
     <div class="card">
+      <h2>Paper trading <span class="dot" id="paperDot"></span>
+        <span style="font-weight:400;color:var(--faint)">— agents trading live, no real money</span></h2>
+      <div class="body" style="padding:14px 16px">
+        <div class="metrics" id="paperMetrics"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="ghost" id="startRun" disabled>Start paper run for this strategy</button>
+          <span class="hint" id="runMsg"></span>
+        </div>
+        <div id="paperOpen"></div>
+        <div id="paperRecent"></div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>
         Live <span class="dot" id="liveDot"></span>
         <span id="liveLabel" style="font-weight:400;color:var(--faint)">— coins being picked up right now</span>
@@ -523,6 +537,102 @@ async function tickLive() {
 }
 tickLive();
 setInterval(tickLive, 5000);
+
+// ── paper trading ─────────────────────────────────────────────────
+let lastStrategyId = null;
+
+const IMG = (u) => u ? `${location.origin.includes("localhost") ? "https://api.polyx.trade" : ""}/img?u=${encodeURIComponent(u)}` : "";
+
+function coinCell(r) {
+  const img = r.image
+    ? `<img src="https://api.polyx.trade/img?u=${encodeURIComponent(r.image)}" alt=""
+         style="width:18px;height:18px;border-radius:50%;vertical-align:-4px;margin-right:6px;object-fit:cover"
+         onerror="this.style.display='none'">`
+    : "";
+  return `${img}${esc(r.symbol || r.mint.slice(0, 6))}`;
+}
+
+$("#startRun").onclick = async () => {
+  const btn = $("#startRun");
+  btn.disabled = true;
+  try {
+    // Publishing gives us a strategy id; a run must reference a saved strategy
+    // so its trades stay attributable after the page is closed.
+    const pub = await api("/api/strategies", {
+      method: "POST",
+      body: JSON.stringify({ strategy: readBuilder(), prompt: $("#prompt").value, isPublic: true }),
+    });
+    lastStrategyId = pub.id;
+    const run = await api("/api/runs", {
+      method: "POST", body: JSON.stringify({ strategyId: pub.id, bankrollSol: 10 }),
+    });
+    $("#runMsg").textContent = `Running — ${run.id.slice(0, 12)}`;
+    tickPaper();
+  } catch (e) {
+    $("#runMsg").textContent = e.message;
+    btn.disabled = false;
+  }
+};
+
+function metric(k, v, c = "") {
+  return `<div class="metric"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
+}
+
+async function tickPaper() {
+  try {
+    const p = await api("/api/paper");
+    const total = p.realisedPnl + p.unrealisedPnl;
+    const cls = (v) => (v > 0 ? "up" : v < 0 ? "down" : "");
+    $("#paperMetrics").innerHTML =
+      metric("Total PnL", num(total, 3) + " SOL", cls(total)) +
+      metric("Realised", num(p.realisedPnl, 3), cls(p.realisedPnl)) +
+      metric("Open", num(p.unrealisedPnl, 3), cls(p.unrealisedPnl)) +
+      metric("Win rate", num(p.winPct, 1) + "%") +
+      metric("Closed", p.nClosed) +
+      metric("Holding", p.nOpen) +
+      metric("Volume", num(p.volumeSol, 1) + " SOL");
+    $("#paperDot").className = p.nOpen > 0 ? "dot on" : "dot";
+
+    $("#paperOpen").innerHTML = !p.open.length ? "" : `
+      <p class="hint" style="margin:14px 0 4px"><b>Holding now</b></p>
+      <div class="scroll" style="max-height:190px"><table>
+        <thead><tr><th>Coin</th><th>Agent</th><th>Size</th><th>Now</th><th>Open PnL</th></tr></thead>
+        <tbody>${p.open.map((r) => {
+          const m = Number(r.mult) || 0;
+          const pnl = r.size_sol * (m - 1);
+          return `<tr>
+            <td>${coinCell(r)}</td>
+            <td>${esc(r.strategy_name)}</td>
+            <td>${num(r.size_sol, 2)}</td>
+            <td class="${cls(m - 1)}">×${num(m, 2)}</td>
+            <td class="${cls(pnl)}">${num(pnl, 3)}</td>
+          </tr>`;
+        }).join("")}</tbody>
+      </table></div>`;
+
+    $("#paperRecent").innerHTML = !p.recent.length ? "" : `
+      <p class="hint" style="margin:14px 0 4px"><b>Recently closed</b></p>
+      <div class="scroll" style="max-height:220px"><table>
+        <thead><tr><th>Coin</th><th>Agent</th><th>Held</th><th>Exit</th><th>PnL</th></tr></thead>
+        <tbody>${p.recent.map((r) => `
+          <tr>
+            <td>${coinCell(r)}</td>
+            <td>${esc(r.strategy_name)}</td>
+            <td>${num(r.held_s, 0)}s</td>
+            <td>${esc(String(r.exit_reason || "").replace(/_/g, " "))}</td>
+            <td class="${cls(Number(r.pnl_sol))}">${num(r.pnl_sol, 3)}</td>
+          </tr>`).join("")}</tbody>
+      </table></div>`;
+  } catch (e) {
+    $("#paperDot").className = "dot";
+  }
+}
+tickPaper();
+setInterval(tickPaper, 5000);
+
+// Enable the run button once a strategy exists to run.
+const origRun = $("#run").onclick;
+$("#run").onclick = async () => { await origRun(); $("#startRun").disabled = false; };
 </script>
 </body>
 </html>

@@ -35,7 +35,12 @@ SELECT
     -- and conservative reading: an unscored coin is not a passing coin.
     ifNull(s.llm_score, 0)          AS llm_score,
     ifNull(s.llm_verdict, 'unscored') AS llm_verdict,
-    ifNull(s.llm_reason, '')        AS llm_reason
+    ifNull(s.llm_reason, '')        AS llm_reason,
+    -- The base model, inlined by `node dist/model/train.js`. Before the first
+    -- fit this is the literal 0, so every strategy filtering on model_score
+    -- matches nothing rather than matching everything — an untrained model must
+    -- not silently behave like an always-true filter.
+    {{MODEL_SCORE_EXPR}} AS model_score
 -- FINAL is required, not optional. ReplacingMergeTree only collapses duplicates
 -- when parts merge, which is asynchronous and may never happen for small parts.
 -- Re-running the extractor for a window therefore leaves BOTH copies visible to

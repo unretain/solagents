@@ -8,6 +8,7 @@ import { z } from "zod";
 import { FEATURES } from "./strategy/features.js";
 import { strategySchema, explainInvalid, type Strategy } from "./strategy/schema.js";
 import { livePicks, liveTape, publishedPicks } from "./live.js";
+import { startPaperEngine } from "./paper.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
 import { runBacktest } from "./backtest/run.js";
@@ -208,6 +209,89 @@ app.get("/api/live/picks", async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/** Start a paper run for a saved strategy. */
+app.post("/api/runs", async (req, res, next) => {
+  try {
+    const body = z.object({
+      strategyId: z.string(),
+      bankrollSol: z.number().positive().max(1000).default(10),
+      ownerId: z.string().nullable().default(null),
+    }).parse(req.body);
+
+    const [s] = await q<{ id: string }>(`SELECT id FROM sa_strategy WHERE id=$1`, [body.strategyId]);
+    if (!s) return res.status(404).json({ error: "strategy not found" });
+
+    // Live mode is not reachable from the API yet. The engine, the fills table
+    // and the leaderboard all handle it, but nothing signs a transaction — so
+    // the endpoint refuses rather than quietly opening a "live" run that is
+    // actually paper and would rank alongside real ones.
+    const id = newId("run");
+    await q(
+      `INSERT INTO sa_run (id, strategy_id, owner_id, mode, bankroll_sol) VALUES ($1,$2,$3,'paper',$4)`,
+      [id, body.strategyId, body.ownerId, body.bankrollSol],
+    );
+    res.json({ id, mode: "paper" });
+  } catch (e) { next(e); }
+});
+
+app.post("/api/runs/:id/stop", async (req, res, next) => {
+  try {
+    await q(`UPDATE sa_run SET status='stopped', stopped_at=now() WHERE id=$1 AND status='running'`,
+      [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+/** Live paper state: open positions, recent closes, running PnL and win rate. */
+app.get("/api/paper", async (_req, res, next) => {
+  try {
+    const [totals] = await q(`
+      SELECT
+        coalesce(sum(p.pnl_sol) FILTER (WHERE p.closed_at IS NOT NULL), 0)          AS realised_pnl,
+        count(*) FILTER (WHERE p.closed_at IS NOT NULL)                             AS n_closed,
+        count(*) FILTER (WHERE p.closed_at IS NOT NULL AND p.pnl_sol > 0)           AS n_wins,
+        count(*) FILTER (WHERE p.closed_at IS NULL)                                 AS n_open,
+        coalesce(sum(p.size_sol), 0)                                                AS volume_sol,
+        -- Mark-to-market on open positions, so the headline number is not stale
+        -- while several positions are still running.
+        coalesce(sum(p.size_sol * ((p.last_px / nullif(p.entry_px,0)) * (1 - p.cost_frac) - 1))
+                 FILTER (WHERE p.closed_at IS NULL), 0)                             AS unrealised_pnl
+      FROM sa_position p JOIN sa_run r ON r.id = p.run_id
+      WHERE r.mode = 'paper'`);
+
+    const open = await q(`
+      SELECT p.mint, p.symbol, p.image, p.size_sol, p.entry_px, p.last_px, p.peak_px,
+             p.opened_at, s.name AS strategy_name,
+             (p.last_px / nullif(p.entry_px,0)) * (1 - p.cost_frac) AS mult
+      FROM sa_position p
+      JOIN sa_run r ON r.id = p.run_id
+      JOIN sa_strategy s ON s.id = r.strategy_id
+      WHERE p.closed_at IS NULL AND r.mode='paper'
+      ORDER BY p.opened_at DESC LIMIT 40`);
+
+    const recent = await q(`
+      SELECT p.mint, p.symbol, p.image, p.size_sol, p.entry_px, p.exit_px, p.exit_reason,
+             p.pnl_sol, p.opened_at, p.closed_at, s.name AS strategy_name,
+             extract(epoch FROM (p.closed_at - p.opened_at)) AS held_s
+      FROM sa_position p
+      JOIN sa_run r ON r.id = p.run_id
+      JOIN sa_strategy s ON s.id = r.strategy_id
+      WHERE p.closed_at IS NOT NULL AND r.mode='paper'
+      ORDER BY p.closed_at DESC LIMIT 40`);
+
+    const t = totals as Record<string, string>;
+    const nClosed = Number(t.n_closed);
+    res.json({
+      realisedPnl: Number(t.realised_pnl),
+      unrealisedPnl: Number(t.unrealised_pnl),
+      nClosed, nOpen: Number(t.n_open),
+      winPct: nClosed ? (100 * Number(t.n_wins)) / nClosed : 0,
+      volumeSol: Number(t.volume_sol),
+      open, recent,
+    });
+  } catch (e) { next(e); }
+});
+
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error("[agents]", err.message);
   res.status(500).json({ error: err.message });
@@ -216,4 +300,10 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // Railway (and most PaaS) inject PORT and expect the process to bind it on all
 // interfaces. AGENTS_PORT stays as the local/systemd fallback.
 const PORT = Number(process.env.PORT || process.env.AGENTS_PORT || 3002);
-app.listen(PORT, "0.0.0.0", () => console.log(`solagents API on :${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`solagents API on :${PORT}`);
+  // Off by default so multiple instances (a Railway deploy plus the box) cannot
+  // both trade the same runs and double every position.
+  if (process.env.PAPER_ENGINE === "true") startPaperEngine();
+  else console.log("[paper] engine disabled (set PAPER_ENGINE=true on exactly ONE instance)");
+});

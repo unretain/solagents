@@ -41,6 +41,59 @@ agave-validator (Yellowstone gRPC :10000)      ← bare metal, Chicago
 `solagents` runs off-box (Railway) and reads ClickHouse over the network.
 Postgres holds strategies, runs and fills.
 
+## The base model
+
+One logistic regression, trained on every episode, shared by everyone. Users do
+not train their own — they **filter on it**: `model_score > 0.4` plus whatever
+else they ask for. One well-fit model over 380k episodes beats thousands of
+individually-overfit ones on a few hundred rows each.
+
+**Label:** reached +30% before falling −25%, within 10 minutes of entry. Computed
+by walking the actual price path, so it is order-aware — not a max/min pair.
+
+**Held-out performance** (trained on everything before 2026-09-05 23:04, tested
+on everything after — split by time, never randomly, because launches cluster by
+dev and trend and a random split leaks near-duplicates across the boundary):
+
+| | |
+|---|---|
+| base rate | 11.4% |
+| AUC | **0.817** |
+| top decile | **35.0%** = 3.06x lift |
+
+Calibration on held-out data is monotonic: score 0.0→3.9%, 0.1→21.8%,
+0.2→30.1%, 0.3→32.8%, 0.4→43.0%, 0.7→51.6%.
+
+**Why linear.** A dot product over existing columns can be inlined as a SQL
+expression and evaluated *inside* the same query that filters on it —
+identically in a backtest and in the live feed, with no serving layer and no way
+for the two to drift. A tree ensemble would need separate inference and would
+immediately reintroduce the backtest/live skew this whole design exists to
+prevent. It is also auditable, which matters when the product is "train your own
+agent".
+
+**Features are clipped to their training range before scoring.** Without this the
+model extrapolates: a wash-traded coin with 9,246 trades from 2 wallets and 0.009
+SOL of volume sat 140x beyond any training example and scored 0.95, because
+`log_n_trades` carries the largest positive weight. A linear model has no notion
+of "I have never seen this" unless it is given one.
+
+Retrain and republish with `node dist/model/train.js 60` — it rewrites both views
+in place, so backtest and live pick up the new model together.
+
+## Paper trading
+
+`PAPER_ENGINE=true` runs a tick every 5s that opens positions for live matches
+and closes them on take-profit, stop-loss, trailing stop or time — using the same
+`toSql()` filter and the same `roundTripCost` model as the backtester, so a paper
+run and a backtest of the same strategy differ only in that one already happened.
+
+Set it on **exactly one** instance. Two would double every position.
+
+Stops resolve adverse-first, identically to the backtester. The high-water mark
+for trailing stops is persisted, not held in memory — if it reset on restart,
+every open trailing position would silently widen its stop.
+
 ## Why "episodes" and not candles
 
 Measured over 6 days and 25.7M trades:

@@ -37,6 +37,8 @@ export interface LiveToken {
   /** from `coin_scores`; undefined until the async scorer has reached this coin */
   llmScore?: number;
   llmVerdict?: string;
+  /** base-model probability, evaluated in SQL by the live view */
+  modelScore?: number;
 }
 
 export interface FeatureDef {
@@ -210,6 +212,17 @@ export const FEATURES = {
       "filter like llm_score > 60 therefore also excludes unscored coins, on purpose.",
     ch: "llm_score",
     live: (t) => t.llmScore ?? 0,
+  },
+  // ---------------------------------------------------------- the base model
+  model_score: {
+    kind: "number",
+    doc:
+      "The base model's probability (0-1) that this coin reaches +30% before -25% " +
+      "within 10 minutes of entry. Trained on every episode; the single most useful " +
+      "filter here. 0 means the model has not been fitted yet, so a threshold filter " +
+      "matches nothing rather than everything.",
+    ch: "model_score",
+    live: (t) => t.modelScore ?? 0,
   },
   llm_verdict: {
     kind: "enum",
