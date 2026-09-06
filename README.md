@@ -1,5 +1,13 @@
 # solagents
 
+### Live: **https://api.polyx.trade/agents/**
+
+Runs on the bare-metal box (`88.216.198.213`) as `polyx-agents.service`, next to
+the validator, ClickHouse and Postgres. There is no external hosting and nothing
+to deploy anywhere else — the data is on that machine and so is the app.
+
+---
+
 A public platform for training trading agents on live Solana memecoin data.
 
 Describe a strategy in plain English. An LLM compiles it once into a validated
@@ -204,11 +212,11 @@ Re-extracting a window is idempotent (ReplacingMergeTree keyed on
 `(mint, horizon_s)`, every read through a `FINAL` view), so overlapping runs cost
 a little disk until the next merge and nothing else.
 
-## Deploying to Railway (optional)
+### Not deployed anywhere else
 
-Not needed — the box already runs everything and holds the data. This exists only
-if you want the web tier off the box; ClickHouse stays put either way, and you
-would be adding a network hop to it plus a second Postgres.
+Railway config was removed (`railway.json`, `Dockerfile`, `.dockerignore` — in
+git history if ever wanted). Running the web tier off-box would mean a second
+Postgres and a network hop to a ClickHouse that is not moving, for no gain.
 
 1. New project → deploy from this repo. `railway.json` points at
    `services/agents/Dockerfile`.
