@@ -555,6 +555,11 @@ const IPFS = "https://api.polyx.trade/ipfs/";
  * from its host. The polyx /img proxy stays as the last resort, since it hedges
  * across several gateways and can rescue a host that blocks hotlinking.
  */
+const ago = (ts) => {
+  const s = Math.max(0, (Date.now() - Date.parse(String(ts).replace(" ", "T") + "Z")) / 1000);
+  return s < 60 ? `${s.toFixed(0)}s` : s < 3600 ? `${(s / 60).toFixed(0)}m` : `${(s / 3600).toFixed(0)}h`;
+};
+
 function imgSources(url) {
   if (!url) return [];
   const cid = /\/ipfs\/([A-Za-z0-9]+)/.exec(url);
