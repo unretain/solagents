@@ -4,410 +4,446 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Poump Lab</title>
-<meta name="description" content="Train trading agents on live Solana data.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://api.polyx.trade" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  /* Palette lifted from the Polyx house tokens (apps/web/src/app/globals.css):
+  /* Palette from the Polyx house tokens (unretain/polyxmobile globals.css):
      --primary 142 76% 36%, --background 0 0% 3.9%, --card 0 0% 7%,
-     --border 0 0% 14.9%, Inter + DM Mono. Same brand, glass surface. */
+     --border 0 0% 14.9%; Inter + DM Mono. */
   :root{
-    --bg:hsl(0 0% 3.9%);
-    --card:hsl(0 0% 7%);
-    --line:hsl(0 0% 14.9%);
+    --bg:hsl(0 0% 3.5%);
+    --panel:hsl(0 0% 6.2%);
+    --line:hsl(0 0% 100% / .07);
+    --line2:hsl(0 0% 100% / .045);
     --ink:hsl(0 0% 98%);
-    --dim:hsl(0 0% 63.9%);
-    --faint:hsl(0 0% 45%);
-    --green:hsl(142 76% 36%);      /* brand */
-    --green-lit:hsl(142 69% 52%);  /* legible on near-black */
-    --green-dim:hsl(142 76% 36% / .14);
-    --red:hsl(0 72% 56%);
-    --red-dim:hsl(0 72% 56% / .13);
-    --glass:hsl(0 0% 100% / .038);
-    --glass-2:hsl(0 0% 100% / .022);
-    --stroke:hsl(0 0% 100% / .075);
-    --r:14px;
+    --dim:hsl(0 0% 64%);
+    --faint:hsl(0 0% 44%);
+    --green:hsl(142 76% 36%);
+    --green-lit:hsl(142 69% 52%);
+    --green-dim:hsl(142 76% 36% / .13);
+    --red:hsl(0 72% 57%);
+    --red-dim:hsl(0 72% 57% / .12);
+    --glass:hsl(0 0% 100% / .035);
+    --sb:248px;
     --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
     --mono:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   }
   *{box-sizing:border-box}
-  html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans);
-    letter-spacing:-.011em;min-height:100vh}
-  body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-    background:
-      radial-gradient(62vw 48vw at 8% -8%, hsl(142 76% 36% / .17), transparent 62%),
-      radial-gradient(44vw 38vw at 98% 2%, hsl(0 0% 100% / .05), transparent 60%),
-      radial-gradient(58vw 50vw at 78% 106%, hsl(142 76% 36% / .10), transparent 64%)}
+  html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.55 var(--sans);
+    letter-spacing:-.011em;overflow:hidden}
   a{color:inherit;text-decoration:none}
   ::selection{background:var(--green-dim)}
-  ::-webkit-scrollbar{width:6px;height:6px}
-  ::-webkit-scrollbar-thumb{background:hsl(0 0% 40% / .5);border-radius:3px}
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:hsl(0 0% 100% / .1);border-radius:7px}
   ::-webkit-scrollbar-track{background:transparent}
 
-  .nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:3px;
-    padding:11px 22px;background:hsl(0 0% 3.9% / .72);
-    backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
-    border-bottom:1px solid hsl(0 0% 100% / .055)}
-  .brand{display:flex;align-items:center;gap:9px;margin-right:20px;font-weight:600;
-    font-size:15.5px;letter-spacing:-.03em;cursor:pointer}
-  .mark{width:21px;height:21px;border-radius:6px;flex:0 0 auto;position:relative;
+  .app{display:grid;grid-template-columns:var(--sb) 1fr;height:100vh}
+
+  /* ── sidebar ─────────────────────────────────────── */
+  .sb{border-right:1px solid var(--line);background:hsl(0 0% 4.6%);display:flex;
+    flex-direction:column;overflow:hidden}
+  .sb-top{display:flex;align-items:center;gap:10px;padding:0 18px;height:60px;
+    border-bottom:1px solid var(--line);flex:0 0 auto}
+  .mark{width:26px;height:26px;border-radius:8px;flex:0 0 auto;position:relative;
     background:linear-gradient(155deg,var(--green-lit),var(--green));
-    box-shadow:0 0 15px hsl(142 76% 36% / .5)}
-  .mark::after{content:"";position:absolute;inset:auto 5px 5px 5px;height:2px;border-radius:2px;
-    background:hsl(0 0% 100% / .9)}
-  .navlink{padding:7px 13px;border-radius:9px;color:var(--dim);font-size:13.5px;font-weight:500;
-    cursor:pointer;transition:.16s;border:1px solid transparent;white-space:nowrap}
-  .navlink:hover{color:var(--ink);background:var(--glass-2)}
-  .navlink[aria-current=page]{color:var(--ink);background:var(--glass);border-color:var(--stroke)}
-  .navstats{margin-left:auto;display:flex;gap:18px;align-items:center;
-    font:400 11.5px/1 var(--mono);color:var(--faint)}
-  .navstats b{color:var(--dim);font-weight:500}
-  @media(max-width:1000px){.navstats{display:none}.navlink{padding:7px 9px;font-size:13px}}
+    box-shadow:0 0 14px hsl(142 76% 36% / .45)}
+  .mark::after{content:"";position:absolute;inset:auto 6px 6px 6px;height:2.5px;
+    border-radius:2px;background:hsl(0 0% 100% / .92)}
+  .sb-top b{font-size:15px;font-weight:600;letter-spacing:-.03em}
+  .sb-nav{flex:1;overflow-y:auto;padding:16px 12px}
+  .sec{color:var(--faint);font-size:10px;font-weight:600;letter-spacing:.13em;
+    text-transform:uppercase;padding:14px 10px 7px}
+  .sec:first-child{padding-top:2px}
+  .nl{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;
+    color:var(--dim);font-size:14px;font-weight:500;cursor:pointer;transition:.13s;
+    border:1px solid transparent;user-select:none}
+  .nl:hover{color:var(--ink);background:hsl(0 0% 100% / .04)}
+  .nl[aria-current=page]{color:var(--ink);background:var(--green-dim);
+    border-color:hsl(142 76% 36% / .25)}
+  .nl[aria-current=page] .ic{color:var(--green-lit)}
+  .ic{width:17px;height:17px;flex:0 0 auto;color:var(--faint);transition:.13s}
+  .nl:hover .ic{color:var(--dim)}
+  .pill-new{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.06em;
+    padding:2px 6px;border-radius:5px;background:var(--green-dim);color:var(--green-lit)}
+  .sb-foot{flex:0 0 auto;padding:12px;border-top:1px solid var(--line)}
+  .promo{padding:14px;border-radius:12px;background:linear-gradient(160deg,
+    hsl(142 76% 36% / .16),hsl(142 76% 36% / .04));border:1px solid hsl(142 76% 36% / .22)}
+  .promo b{display:block;font-size:13.5px;margin-bottom:3px}
+  .promo p{margin:0 0 11px;font-size:12px;color:var(--dim);line-height:1.45}
 
-  .wrap{max-width:1360px;margin:0 auto;padding:34px 22px 90px}
-  .page{display:none;animation:fade .3s cubic-bezier(.22,.8,.3,1)}
+  /* ── main ────────────────────────────────────────── */
+  .main{display:flex;flex-direction:column;overflow:hidden}
+  .top{height:60px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 22px;
+    border-bottom:1px solid var(--line);background:hsl(0 0% 3.5% / .8);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:9px;
+    background:var(--glass);border:1px solid var(--line);font-size:13px;font-weight:500;
+    white-space:nowrap}
+  .chip .mono{font-family:var(--mono);font-size:12.5px}
+  .content{flex:1;overflow-y:auto;padding:26px 22px 70px}
+  .inner{max-width:1400px;margin:0 auto}
+  .page{display:none;animation:fade .22s cubic-bezier(.22,.8,.3,1)}
   .page.on{display:block}
-  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
-  h1{margin:0 0 6px;font-size:32px;font-weight:600;letter-spacing:-.038em;line-height:1.15}
-  .sub{margin:0 0 26px;color:var(--faint);font-size:14.5px;max-width:76ch}
+  h1{margin:0 0 5px;font-size:27px;font-weight:600;letter-spacing:-.035em}
+  h1 .wave{display:inline-block;animation:wave 2.4s ease-in-out infinite;transform-origin:70% 70%}
+  @keyframes wave{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(14deg)}85%{transform:rotate(-8deg)}}
+  .sub{margin:0 0 22px;color:var(--faint);font-size:14px;max-width:78ch}
 
-  .glass{background:var(--glass);border:1px solid var(--stroke);border-radius:var(--r);
-    backdrop-filter:blur(20px) saturate(165%);-webkit-backdrop-filter:blur(20px) saturate(165%);
-    box-shadow:0 1px 0 hsl(0 0% 100% / .05) inset, 0 14px 40px hsl(0 0% 0% / .36);overflow:hidden}
-  .glass>h3{margin:0;padding:12px 18px;font-size:11px;font-weight:600;color:var(--faint);
-    letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid hsl(0 0% 100% / .05);
-    display:flex;align-items:center;gap:9px;background:var(--glass-2)}
-  .glass .body{padding:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .card>h3{margin:0;padding:13px 18px;font-size:13.5px;font-weight:600;
+    border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:9px}
+  .card>h3 .more{margin-left:auto;font-size:12.5px;color:var(--green-lit);
+    font-weight:500;cursor:pointer}
+  .card .body{padding:18px}
   .grid{display:grid;gap:16px}
+  .g4{grid-template-columns:repeat(4,1fr)}
   .g2{grid-template-columns:1fr 1fr}
-  .g3{grid-template-columns:repeat(3,1fr)}
-  .gside{grid-template-columns:minmax(340px,420px) 1fr}
-  @media(max-width:980px){.g2,.g3,.gside{grid-template-columns:1fr}}
+  .g23{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr)}
+  .gside{grid-template-columns:minmax(340px,420px) minmax(0,1fr)}
+  @media(max-width:1180px){.g4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:960px){.g2,.g23,.gside,.g4{grid-template-columns:1fr}
+    .app{grid-template-columns:1fr}.sb{display:none}}
 
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:13px;margin-bottom:20px}
-  .stat{padding:15px 17px}
-  .stat .k{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;font-weight:600}
-  .stat .v{font:600 26px/1.15 var(--sans);letter-spacing:-.035em;margin-top:6px;
+  /* stat card */
+  .kpi{padding:17px 18px;position:relative}
+  .kpi .k{color:var(--dim);font-size:13.5px;font-weight:500}
+  .kpi .v{font:600 27px/1.2 var(--sans);letter-spacing:-.035em;margin-top:11px;
     font-variant-numeric:tabular-nums}
-  .stat .s{color:var(--faint);font-size:11.5px;margin-top:3px}
+  .kpi .s{color:var(--faint);font-size:12.5px;margin-top:4px}
+  .kpi .badge{position:absolute;top:15px;right:16px;width:30px;height:30px;border-radius:9px;
+    display:grid;place-items:center;background:var(--green-dim);color:var(--green-lit)}
   .up{color:var(--green-lit)} .down{color:var(--red)}
 
+  .banner{display:flex;align-items:center;gap:14px;padding:15px 18px;border-radius:13px;
+    background:linear-gradient(100deg,hsl(142 76% 36% / .13),hsl(142 76% 36% / .03));
+    border:1px solid hsl(142 76% 36% / .22);margin-bottom:20px}
+  .banner .bi{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+    background:var(--green-dim);color:var(--green-lit);flex:0 0 auto}
+  .banner b{font-size:14px} .banner p{margin:2px 0 0;font-size:13px;color:var(--dim)}
+
   table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
-  th,td{padding:9px 14px;text-align:right;white-space:nowrap}
-  th{color:var(--faint);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.1em;
-    position:sticky;top:0;z-index:1;background:hsl(0 0% 6% / .93);backdrop-filter:blur(12px);
-    border-bottom:1px solid hsl(0 0% 100% / .06)}
-  td{border-bottom:1px solid hsl(0 0% 100% / .03)}
+  th,td{padding:9px 16px;text-align:right;white-space:nowrap}
+  th{color:var(--faint);font-weight:600;font-size:10px;text-transform:uppercase;
+    letter-spacing:.1em;position:sticky;top:0;z-index:1;background:var(--panel);
+    border-bottom:1px solid var(--line2)}
+  td{border-bottom:1px solid hsl(0 0% 100% / .028)}
   th:first-child,td:first-child{text-align:left}
-  tbody tr{transition:background .15s}
-  tbody tr:hover{background:hsl(0 0% 100% / .025)}
+  tbody tr{transition:background .14s}
+  tbody tr:hover{background:hsl(0 0% 100% / .022)}
   .scroll{overflow:auto;overscroll-behavior:contain}
   .num{font-family:var(--mono);font-size:12px}
 
   .coin{display:flex;align-items:center;gap:9px;min-width:0}
   .coin img,.coin .ph{width:22px;height:22px;border-radius:50%;flex:0 0 auto;object-fit:cover;
-    background:hsl(0 0% 100% / .06);border:1px solid hsl(0 0% 100% / .07)}
+    background:hsl(0 0% 100% / .06);border:1px solid var(--line)}
   .coin span{overflow:hidden;text-overflow:ellipsis}
-
   .tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:600;
-    background:hsl(0 0% 100% / .055);color:var(--dim);border:1px solid hsl(0 0% 100% / .07)}
-  .tag.profile,.tag.buy{background:var(--green-dim);color:var(--green-lit);border-color:hsl(142 76% 36% / .35)}
-  .tag.sell{background:var(--red-dim);color:var(--red);border-color:hsl(0 72% 56% / .3)}
-
+    background:hsl(0 0% 100% / .055);color:var(--dim);border:1px solid var(--line)}
+  .tag.profile,.tag.buy,.tag.live{background:var(--green-dim);color:var(--green-lit);
+    border-color:hsl(142 76% 36% / .3)}
+  .tag.sell,.tag.halted{background:var(--red-dim);color:var(--red);border-color:hsl(0 72% 57% / .28)}
   @keyframes slidein{from{opacity:0;transform:translateY(-8px);background:var(--green-dim)}
     to{opacity:1;transform:none;background:transparent}}
   tr.new{animation:slidein .5s cubic-bezier(.22,.8,.3,1)}
   .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:0 0 auto}
   .dot.on{background:var(--green-lit);animation:pulse 2.2s infinite}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 hsl(142 69% 52% / .55)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 hsl(142 69% 52% / .5)}70%{box-shadow:0 0 0 7px transparent}
+    100%{box-shadow:0 0 0 0 transparent}}
 
   textarea,input,select{width:100%;color:var(--ink);font:14px/1.55 var(--sans);
-    background:hsl(0 0% 100% / .04);border:1px solid hsl(0 0% 100% / .085);
-    border-radius:11px;padding:11px 13px;transition:.16s}
+    background:hsl(0 0% 100% / .04);border:1px solid var(--line);border-radius:10px;
+    padding:11px 13px;transition:.14s}
   input,select{font:400 12.5px/1.4 var(--mono);padding:9px 12px;border-radius:9px}
-  textarea{min-height:128px;resize:vertical}
+  textarea{min-height:124px;resize:vertical}
   textarea::placeholder{color:var(--faint)}
   :focus{outline:none}
   textarea:focus,input:focus,select:focus{border-color:hsl(142 76% 36% / .6);
-    box-shadow:0 0 0 3px hsl(142 76% 36% / .16)}
+    box-shadow:0 0 0 3px hsl(142 76% 36% / .14)}
   select{appearance:none;cursor:pointer;
-    background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);
+    background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),
+      linear-gradient(135deg,var(--faint) 50%,transparent 50%);
     background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;background-size:5px 5px;
     background-repeat:no-repeat;padding-right:28px}
-  option{background:hsl(0 0% 8%);color:var(--ink)}
+  option{background:hsl(0 0% 8%)}
   label.f{display:block;color:var(--faint);font-size:11px;margin-bottom:5px;font-weight:500}
 
-  button{background:var(--green);color:#fff;border:0;border-radius:10px;padding:10px 18px;
-    font:600 13.5px var(--sans);letter-spacing:-.01em;cursor:pointer;transition:.16s;
-    box-shadow:0 4px 16px hsl(142 76% 36% / .3)}
-  button:hover:not(:disabled){background:hsl(142 76% 41%);transform:translateY(-1px)}
-  button:active:not(:disabled){transform:none}
-  button:disabled{opacity:.4;cursor:default;box-shadow:none}
-  button.ghost{background:var(--glass);color:var(--dim);border:1px solid var(--stroke);box-shadow:none}
-  button.ghost:hover:not(:disabled){color:var(--ink);background:hsl(0 0% 100% / .07);transform:none}
+  button{background:var(--green);color:#fff;border:0;border-radius:10px;padding:9px 17px;
+    font:600 13.5px var(--sans);cursor:pointer;transition:.14s}
+  button:hover:not(:disabled){background:hsl(142 76% 41%)}
+  button:disabled{opacity:.4;cursor:default}
+  button.ghost{background:var(--glass);color:var(--dim);border:1px solid var(--line)}
+  button.ghost:hover:not(:disabled){color:var(--ink);background:hsl(0 0% 100% / .07)}
   button.sm{padding:5px 12px;font-size:12px;border-radius:8px}
-  button.big{padding:13px 26px;font-size:15px;border-radius:12px}
+  button.w{width:100%}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .row+.row{margin-top:11px}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:11px}
-
-  .filter{display:grid;grid-template-columns:1fr 68px 1fr auto;gap:7px;align-items:center;
-    padding:9px;border-radius:11px;background:var(--glass-2);
-    border:1px solid hsl(0 0% 100% / .05);margin-bottom:8px}
-  .filter button{background:transparent;color:var(--faint);border:0;padding:2px 6px;font-size:17px;
-    box-shadow:none;line-height:1}
-  .filter button:hover{color:var(--red);background:transparent;transform:none}
+  .filter{display:grid;grid-template-columns:1fr 66px 1fr auto;gap:7px;align-items:center;
+    padding:9px;border-radius:10px;background:hsl(0 0% 100% / .022);
+    border:1px solid var(--line2);margin-bottom:8px}
+  .filter button{background:transparent;color:var(--faint);border:0;padding:2px 6px;font-size:17px}
+  .filter button:hover{color:var(--red);background:transparent}
   .doc{grid-column:1/-1;color:var(--faint);font-size:11px;line-height:1.45;padding:0 3px}
-
-  .note{padding:11px 14px;border-radius:11px;font-size:13px;margin-top:12px;
-    background:hsl(0 0% 100% / .045);border:1px solid var(--stroke);color:var(--dim)}
-  .note.ok{background:var(--green-dim);border-color:hsl(142 76% 36% / .32);color:hsl(142 60% 76%)}
-  .note.err{background:var(--red-dim);border-color:hsl(0 72% 56% / .3);color:hsl(0 80% 84%)}
-  .empty{color:var(--faint);padding:44px 18px;text-align:center;font-size:13.5px}
+  .note{padding:11px 14px;border-radius:10px;font-size:13px;margin-top:12px;
+    background:hsl(0 0% 100% / .04);border:1px solid var(--line);color:var(--dim)}
+  .note.ok{background:var(--green-dim);border-color:hsl(142 76% 36% / .3);color:hsl(142 55% 78%)}
+  .note.err{background:var(--red-dim);border-color:hsl(0 72% 57% / .3);color:hsl(0 80% 85%)}
+  .empty{color:var(--faint);padding:40px 18px;text-align:center;font-size:13.5px}
   .hint{color:var(--faint);font-size:12.5px;line-height:1.55}
-  pre{font:400 11.5px/1.55 var(--mono);color:var(--dim);background:hsl(0 0% 0% / .3);padding:12px;
-    border-radius:9px;overflow:auto;margin:8px 0 0;border:1px solid hsl(0 0% 100% / .05)}
-  details summary{cursor:pointer;color:var(--faint);font-size:12.5px;padding:7px 0;user-select:none}
+  pre{font:400 11.5px/1.5 var(--mono);color:var(--dim);background:hsl(0 0% 0% / .3);padding:12px;
+    border-radius:9px;overflow:auto;margin:8px 0 0;border:1px solid var(--line2)}
+  details summary{cursor:pointer;color:var(--faint);font-size:12.5px;padding:6px 0}
   .spin{display:inline-block;width:12px;height:12px;border:2px solid hsl(0 0% 100% / .3);
     border-top-color:#fff;border-radius:50%;animation:sp .65s linear infinite;
     vertical-align:-2px;margin-right:7px}
   @keyframes sp{to{transform:rotate(360deg)}}
-  .bar{height:5px;background:hsl(0 0% 100% / .07);border-radius:99px;overflow:hidden;min-width:54px}
+  .bar{height:5px;background:hsl(0 0% 100% / .07);border-radius:99px;overflow:hidden;min-width:50px}
   .bar i{display:block;height:100%;border-radius:99px}
-  .tabs{display:inline-flex;gap:3px;padding:4px;margin-bottom:16px;border-radius:12px;
-    background:var(--glass);border:1px solid var(--stroke)}
-  .tab{background:transparent;color:var(--dim);border:0;border-radius:9px;padding:6px 15px;
-    font:500 12.5px var(--sans);cursor:pointer;box-shadow:none}
-  .tab:hover:not([aria-selected=true]){color:var(--ink);background:transparent;transform:none}
+  .tabs{display:inline-flex;gap:3px;padding:4px;margin-bottom:16px;border-radius:11px;
+    background:var(--glass);border:1px solid var(--line)}
+  .tab{background:transparent;color:var(--dim);border-radius:8px;padding:6px 15px;
+    font:500 12.5px var(--sans)}
+  .tab:hover:not([aria-selected=true]){color:var(--ink);background:transparent}
   .tab[aria-selected=true]{background:hsl(0 0% 100% / .09);color:var(--ink)}
   .steplbl{font-size:10.5px;color:var(--green-lit);font-weight:700;letter-spacing:.12em;
     text-transform:uppercase;margin-bottom:10px}
-
-  /* ── overview ─────────────────────────────────────── */
-  .hero{padding:56px 0 40px;max-width:820px}
-  .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:5px 13px;border-radius:99px;
+  .chartwrap{position:relative;height:158px}
+  .chartwrap svg{width:100%;height:100%;display:block;overflow:visible}
+  .chartfoot{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px;
+    padding-top:14px;border-top:1px solid var(--line2)}
+  .chartfoot .k{color:var(--faint);font-size:11.5px}
+  .chartfoot .v{font:600 15px var(--sans);margin-top:2px;font-variant-numeric:tabular-nums}
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:1100px){.steps{grid-template-columns:1fr}}
+  .step{padding:18px}
+  .stepn{width:25px;height:25px;border-radius:8px;display:grid;place-items:center;
     background:var(--green-dim);border:1px solid hsl(142 76% 36% / .3);color:var(--green-lit);
-    font-size:12px;font-weight:600;margin-bottom:22px}
-  .hero h2{margin:0 0 18px;font-size:clamp(38px,5.4vw,62px);font-weight:600;line-height:1.03;
-    letter-spacing:-.045em}
-  .hero h2 em{font-style:normal;color:var(--green-lit)}
-  .hero p{margin:0 0 30px;font-size:18px;line-height:1.6;color:var(--dim);max-width:64ch}
-  .step{padding:22px}
-  .stepn{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;
-    background:var(--green-dim);border:1px solid hsl(142 76% 36% / .32);color:var(--green-lit);
-    font:600 12.5px var(--mono);margin-bottom:14px}
-  .step h4{margin:0 0 7px;font-size:16px;font-weight:600;letter-spacing:-.022em}
-  .step p{margin:0;font-size:13.5px;color:var(--faint);line-height:1.6}
-  .step code{font:400 12px var(--mono);color:var(--green-lit);background:var(--green-dim);
+    font:600 12px var(--mono);margin-bottom:12px}
+  .step h4{margin:0 0 6px;font-size:15px;font-weight:600;letter-spacing:-.02em}
+  .step p{margin:0;font-size:13px;color:var(--faint);line-height:1.55}
+  .step code{font:400 11.5px var(--mono);color:var(--green-lit);background:var(--green-dim);
     padding:1px 5px;border-radius:4px}
-  .facts td{padding:11px 14px;font-size:13.5px;border-bottom:1px solid hsl(0 0% 100% / .04)}
-  .facts td:last-child{text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
-  .facts td:first-child{color:var(--dim)}
 </style>
 </head>
 <body>
+<div class="app">
 
-<nav class="nav">
-  <div class="brand" data-page="home"><div class="mark"></div>Poump Lab</div>
-  <div class="navlink" data-page="home" aria-current="page">Overview</div>
-  <div class="navlink" data-page="live">Live</div>
-  <div class="navlink" data-page="build">Build</div>
-  <div class="navlink" data-page="model">Model</div>
-  <div class="navlink" data-page="mine">My agents</div>
-  <div class="navlink" data-page="board">Leaderboard</div>
-  <div class="navstats" id="navstats"></div>
-</nav>
+  <aside class="sb">
+    <div class="sb-top"><div class="mark"></div><b>Poump Lab</b></div>
+    <nav class="sb-nav">
+      <div class="sec">Workspace</div>
+      <div class="nl" data-page="home" aria-current="page">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Overview</div>
+      <div class="nl" data-page="live">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+        Live feed<span class="pill-new">LIVE</span></div>
 
-<div class="wrap">
+      <div class="sec">Agents</div>
+      <div class="nl" data-page="build">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/></svg>
+        Build an agent</div>
+      <div class="nl" data-page="mine">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="8" width="18" height="12" rx="2.5"/><path d="M8 8V6a4 4 0 0 1 8 0v2M9 14h6"/></svg>
+        My agents</div>
 
-  <!-- ══════════ OVERVIEW ══════════ -->
-  <section class="page on" id="page-home">
-    <div class="hero">
-      <div class="eyebrow"><span class="dot on"></span> Reading the chain from our own validator</div>
-      <h2>Describe a trading strategy. <em>Watch it trade.</em></h2>
-      <p>Poump Lab turns a sentence of English into a trading agent, tests it against every
-        Solana memecoin launch we have on record, then runs it live on paper money and ranks it
-        against everyone else's.</p>
-      <div class="row">
-        <button class="big" data-go="build">Build an agent</button>
-        <button class="big ghost" data-go="live">Watch it live</button>
+      <div class="sec">Intelligence</div>
+      <div class="nl" data-page="model">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="2.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/></svg>
+        Base model</div>
+      <div class="nl" data-page="board">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 21h8M12 17v4M6 4h12v5a6 6 0 0 1-12 0z"/><path d="M18 5h3v2a4 4 0 0 1-4 4M6 5H3v2a4 4 0 0 0 4 4"/></svg>
+        Leaderboard</div>
+    </nav>
+    <div class="sb-foot">
+      <div class="promo">
+        <b>Paper money only</b>
+        <p>Agents trade a simulated balance. No wallet is connected and nothing signs a transaction.</p>
+        <button class="w sm" data-go="build">Build an agent</button>
       </div>
     </div>
+  </aside>
 
-    <div class="stats" id="homeStats"></div>
+  <div class="main">
+    <header class="top">
+      <div class="chip"><span class="mono" id="topPnl">—</span> <span style="color:var(--faint)">SOL paper</span></div>
+      <div class="chip"><span class="dot on" id="topDot"></span> <span id="topFeed">Feed live</span></div>
+      <div class="chip" style="margin-left:auto"><span style="color:var(--faint)">Episodes</span> <span class="mono" id="topEp">—</span></div>
+      <div class="chip"><span style="color:var(--faint)">Coins</span> <span class="mono" id="topCoins">—</span></div>
+      <div class="chip"><span style="color:var(--faint)">Model AUC</span> <span class="mono up" id="topAuc">—</span></div>
+    </header>
 
-    <h3 style="font-size:19px;font-weight:600;letter-spacing:-.03em;margin:34px 0 16px">How it works</h3>
-    <div class="grid g3">
-      <div class="glass step">
-        <div class="stepn">1</div>
-        <h4>We see every trade first</h4>
-        <p>The feed comes from our own Solana validator over Yellowstone gRPC — not a resold API.
-          That means every trade carries the <code>wallet</code> that made it, so agents can act on
-          who is buying, not just how much.</p>
-      </div>
-      <div class="glass step">
-        <div class="stepn">2</div>
-        <h4>A coin is an episode</h4>
-        <p>The median launch trades for <b>2 minutes</b> and sees <b>8 trades</b>. There is no chart
-          to hold. So every launch is stored as one <em>episode</em> — what was knowable in the first
-          30–180 seconds, and what happened afterwards.</p>
-      </div>
-      <div class="glass step">
-        <div class="stepn">3</div>
-        <h4>One model scores them all</h4>
-        <p>A single model trained on every episode rates each launch 0–1 on whether it reaches
-          <code>+30%</code> before <code>−25%</code>. You don't train your own — you filter on its
-          score. One model fit on everything beats thousands fit on scraps.</p>
-      </div>
-      <div class="glass step">
-        <div class="stepn">4</div>
-        <h4>Your words become a config</h4>
-        <p>An AI reads your sentence once and writes a validated config. It never runs at trade
-          time — what trades is deterministic code, so a backtest and a live run make
-          <b>identical decisions</b>.</p>
-      </div>
-      <div class="glass step">
-        <div class="stepn">5</div>
-        <h4>Backtest, then paper trade</h4>
-        <p>Tested against every stored episode with real fees, bonding-curve slippage and
-          second-by-second exits. Then it runs live on paper money — same filter, same cost model,
-          same code.</p>
-      </div>
-      <div class="glass step">
-        <div class="stepn">6</div>
-        <h4>Ranked honestly</h4>
-        <p>Backtest, paper and live are ranked <b>separately and never merged</b>. A backtest is a
-          claim about the past. Only a live run risked anything.</p>
-      </div>
-    </div>
+    <div class="content"><div class="inner">
 
-    <div class="grid g2" style="margin-top:28px">
-      <div class="glass"><h3>What the data actually says</h3><div class="body">
-        <p class="hint" style="margin:0 0 14px">Measured on our own episodes, not claimed.</p>
-        <table class="facts"><tbody>
-          <tr><td>Median coin lifetime</td><td>2 min · 8 trades</td></tr>
-          <tr><td>Launch reaches +30% before −25%</td><td>11.3%</td></tr>
-          <tr><td>Model's top decile does</td><td class="up">35.0% · 3.0×</td></tr>
-          <tr><td>Real X profile → graduates</td><td class="up">9.5%</td></tr>
-          <tr><td>No link → graduates</td><td>2.5%</td></tr>
-          <tr><td>Link to someone else's tweet</td><td class="down">1.1%</td></tr>
-          <tr><td>Dev who launched 3+ before</td><td class="down">×0.44 per trade</td></tr>
-        </tbody></table>
-      </div></div>
-      <div class="glass"><h3>What we won't pretend</h3><div class="body">
-        <p style="margin:0 0 12px">No configuration tested here is profitable yet. The best still
-          loses roughly <b>17% per trade</b> once fees and slippage are charged.</p>
-        <p class="hint" style="margin:0 0 12px">Filters move it from ×0.03 to ×0.83 — entry selection
-          clearly works. The gap that remains is exits, and we would rather show you that than a
-          number that flatters the product.</p>
-        <p class="hint" style="margin:0">Every ambiguity in the backtester resolves <em>against</em>
-          the strategy: gap past a stop and you eat the gap; gap past a take-profit and you get the
-          take-profit, never the overshoot. A coin nobody traded again settles at zero, not at
-          break-even.</p>
-      </div></div>
-    </div>
-  </section>
+      <!-- ══════ OVERVIEW ══════ -->
+      <section class="page on" id="page-home">
+        <h1>Poump Lab <span class="wave">👋</span></h1>
+        <p class="sub">Describe a trading strategy in English. It gets tested against every Solana
+          memecoin launch on record, then runs live on paper money and is ranked against everyone else's.</p>
 
-  <!-- ══════════ LIVE ══════════ -->
-  <section class="page" id="page-live">
-    <h1>Live</h1>
-    <p class="sub">Every transaction on the chain as it lands, and what the agents took out of it.</p>
-    <div class="stats" id="scanStats"></div>
-    <div class="grid g2">
-      <div class="glass">
-        <h3><span class="dot on" id="txDot"></span> Transaction feed
-          <span id="txRate" style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500"></span></h3>
-        <div class="scroll" style="max-height:600px"><table>
-          <thead><tr><th>Coin</th><th>Side</th><th>SOL</th><th>Trader</th><th>Age</th></tr></thead>
-          <tbody id="txBody"></tbody>
-        </table></div>
-      </div>
-      <div class="glass">
-        <h3><span class="dot" id="pickDot"></span> Picked up by agents</h3>
-        <div class="scroll" style="max-height:600px"><table>
-          <thead><tr><th>Coin</th><th>Agent</th><th>Age</th><th>Traders</th><th>Vol</th><th>X</th></tr></thead>
-          <tbody id="pickBody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
-        </table></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════ BUILD ══════════ -->
-  <section class="page" id="page-build">
-    <h1>Build an agent</h1>
-    <p class="sub">Describe it in plain English. The AI writes the config once, when you save —
-      what trades is that config, so a backtest and a live run make identical decisions.</p>
-    <div class="grid gside">
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="glass"><div class="body">
-          <div class="steplbl">Step 1 — describe it</div>
-          <textarea id="prompt" placeholder="Buy coins 60 seconds after launch that the model rates above 0.5, with a real X profile and at least 20 different traders. Take profit at 30%, stop out at 25%, trail 15%, never hold past 5 minutes."></textarea>
-          <div class="row" style="margin-top:12px">
-            <button id="compile">Compile with AI</button>
-            <button class="ghost" id="manual">Build by hand</button>
+        <div class="banner">
+          <div class="bi">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
           </div>
-          <div id="compileMsg"></div>
-        </div></div>
-        <div class="glass" id="builder" hidden><div class="body">
-          <div class="steplbl">Step 2 — entry rules</div>
-          <div class="row" style="margin-bottom:13px">
-            <input id="name" placeholder="Agent name" style="flex:1">
-            <select id="horizon" style="width:auto;min-width:142px">
-              <option value="30">decide at 30s</option>
-              <option value="60" selected>decide at 60s</option>
-              <option value="180">decide at 180s</option>
-            </select>
+          <div style="flex:1">
+            <b>Nothing here is profitable yet — and we will not pretend otherwise.</b>
+            <p>The best configuration still loses about 17% per trade once fees and slippage are
+              charged. Entry filters clearly work; exits are the gap.</p>
           </div>
-          <div id="filters"></div>
-          <button class="ghost sm" id="addFilter">+ condition</button>
-          <div class="steplbl" style="margin-top:22px">Step 3 — exits &amp; size</div>
-          <div class="cols">
-            <div><label class="f">Take profit %</label><input id="tp" type="number" value="30"></div>
-            <div><label class="f">Stop loss %</label><input id="sl" type="number" value="25"></div>
-            <div><label class="f">Trailing stop %</label><input id="tr" type="number" placeholder="off"></div>
-            <div><label class="f">Max hold (s)</label><input id="hold" type="number" value="300"></div>
-            <div><label class="f">Size per trade (SOL)</label><input id="size" type="number" step="0.1" value="0.5"></div>
-            <div><label class="f">Max concurrent</label><input id="conc" type="number" value="8"></div>
+          <button class="ghost sm" data-go="model">See the model</button>
+        </div>
+
+        <div class="grid g4" id="kpis"></div>
+
+        <div class="grid g23" style="margin-top:16px">
+          <div class="card"><h3>Get started</h3><div class="body">
+            <p style="margin:0 0 14px;color:var(--dim);font-size:13.5px">Write one sentence. An AI turns
+              it into a validated config — then the same config is backtested and traded live, so both
+              make identical decisions.</p>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:15px">
+              <div class="row" style="gap:8px"><span class="up">✓</span><span style="font-size:13.5px">23 features, including a shared base model</span></div>
+              <div class="row" style="gap:8px"><span class="up">✓</span><span style="font-size:13.5px">Real fees, slippage and second-by-second exits</span></div>
+              <div class="row" style="gap:8px"><span class="up">✓</span><span style="font-size:13.5px">Paper trading from your own validator feed</span></div>
+            </div>
+            <button data-go="build">Build an agent →</button>
+          </div></div>
+
+          <div class="card"><h3>Paper equity · all agents
+            <span class="more" data-go="mine">View details</span></h3><div class="body">
+            <div class="chartwrap" id="chart"></div>
+            <div class="chartfoot" id="chartFoot"></div>
+          </div></div>
+        </div>
+
+        <h3 style="font-size:17px;font-weight:600;letter-spacing:-.028em;margin:28px 0 14px">How it works</h3>
+        <div class="steps">
+          <div class="card step"><div class="stepn">1</div><h4>We see every trade first</h4>
+            <p>The feed comes from our own Solana validator over Yellowstone gRPC — not a resold API.
+              Every trade carries the <code>wallet</code> behind it, so agents can act on who is buying.</p></div>
+          <div class="card step"><div class="stepn">2</div><h4>A coin is an episode</h4>
+            <p>The median launch trades for <b>2 minutes</b> across <b>8 trades</b>. There is no chart to
+              hold, so each launch is stored as what was knowable in the first 30–180 seconds and what
+              happened after.</p></div>
+          <div class="card step"><div class="stepn">3</div><h4>One model scores them all</h4>
+            <p>A single model rates every launch 0–1 on reaching <code>+30%</code> before
+              <code>−25%</code>. You don't train your own — you filter on its score.</p></div>
+          <div class="card step"><div class="stepn">4</div><h4>Your words become a config</h4>
+            <p>The AI runs once, at save time. What trades is deterministic code, so a backtest and a
+              live run make <b>identical decisions</b>.</p></div>
+          <div class="card step"><div class="stepn">5</div><h4>Backtest, then paper trade</h4>
+            <p>Tested against every stored episode with real costs, then run live on paper money through
+              the same filter and the same cost model.</p></div>
+          <div class="card step"><div class="stepn">6</div><h4>Ranked honestly</h4>
+            <p>Backtest, paper and live rank <b>separately and never merge</b>. Only a live run risked
+              anything.</p></div>
+        </div>
+
+        <div class="grid g2" style="margin-top:16px">
+          <div class="card"><h3>Latest paper trades <span class="more" data-go="mine">View all</span></h3>
+            <div class="scroll" style="max-height:290px"><table>
+              <thead><tr><th>Coin</th><th>Agent</th><th>Held</th><th>Exit</th><th>PnL</th></tr></thead>
+              <tbody id="homeTrades"></tbody></table></div></div>
+          <div class="card"><h3>Live transactions <span class="more" data-go="live">View feed</span></h3>
+            <div class="scroll" style="max-height:290px"><table>
+              <thead><tr><th>Coin</th><th>Side</th><th>SOL</th><th>Age</th></tr></thead>
+              <tbody id="homeTx"></tbody></table></div></div>
+        </div>
+      </section>
+
+      <!-- ══════ LIVE ══════ -->
+      <section class="page" id="page-live">
+        <h1>Live feed</h1>
+        <p class="sub">Every transaction on the chain as it lands, and what the agents took out of it.</p>
+        <div class="grid g4" id="scanKpis" style="margin-bottom:16px"></div>
+        <div class="grid g2">
+          <div class="card"><h3><span class="dot on" id="txDot"></span> Transaction feed
+            <span class="more" style="cursor:default;color:var(--faint)" id="txRate"></span></h3>
+            <div class="scroll" style="max-height:calc(100vh - 340px)"><table>
+              <thead><tr><th>Coin</th><th>Side</th><th>SOL</th><th>Trader</th><th>Age</th></tr></thead>
+              <tbody id="txBody"></tbody></table></div></div>
+          <div class="card"><h3><span class="dot" id="pickDot"></span> Picked up by agents</h3>
+            <div class="scroll" style="max-height:calc(100vh - 340px)"><table>
+              <thead><tr><th>Coin</th><th>Agent</th><th>Age</th><th>Traders</th><th>Vol</th><th>X</th></tr></thead>
+              <tbody id="pickBody"></tbody></table></div></div>
+        </div>
+      </section>
+
+      <!-- ══════ BUILD ══════ -->
+      <section class="page" id="page-build">
+        <h1>Build an agent</h1>
+        <p class="sub">Describe it in plain English. The AI writes the config once, when you save.</p>
+        <div class="grid gside">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="card"><div class="body">
+              <div class="steplbl">Step 1 — describe it</div>
+              <textarea id="prompt" placeholder="Buy coins 60 seconds after launch that the model rates above 0.5, with a real X profile and at least 20 different traders. Take profit at 30%, stop out at 25%, trail 15%, never hold past 5 minutes."></textarea>
+              <div class="row" style="margin-top:12px">
+                <button id="compile">Compile with AI</button>
+                <button class="ghost" id="manual">Build by hand</button>
+              </div>
+              <div id="compileMsg"></div>
+            </div></div>
+            <div class="card" id="builder" hidden><div class="body">
+              <div class="steplbl">Step 2 — entry rules</div>
+              <div class="row" style="margin-bottom:13px">
+                <input id="name" placeholder="Agent name" style="flex:1">
+                <select id="horizon" style="width:auto;min-width:140px">
+                  <option value="30">decide at 30s</option>
+                  <option value="60" selected>decide at 60s</option>
+                  <option value="180">decide at 180s</option></select>
+              </div>
+              <div id="filters"></div>
+              <button class="ghost sm" id="addFilter">+ condition</button>
+              <div class="steplbl" style="margin-top:22px">Step 3 — exits &amp; size</div>
+              <div class="cols">
+                <div><label class="f">Take profit %</label><input id="tp" type="number" value="30"></div>
+                <div><label class="f">Stop loss %</label><input id="sl" type="number" value="25"></div>
+                <div><label class="f">Trailing stop %</label><input id="tr" type="number" placeholder="off"></div>
+                <div><label class="f">Max hold (s)</label><input id="hold" type="number" value="300"></div>
+                <div><label class="f">Size per trade (SOL)</label><input id="size" type="number" step="0.1" value="0.5"></div>
+                <div><label class="f">Max concurrent</label><input id="conc" type="number" value="8"></div>
+              </div>
+              <div class="row" style="margin-top:16px">
+                <button id="run">Backtest</button>
+                <button class="ghost" id="deploy" disabled>Publish &amp; go live</button>
+              </div>
+            </div></div>
           </div>
-          <div class="row" style="margin-top:16px">
-            <button id="run">Backtest</button>
-            <button class="ghost" id="deploy" disabled>Publish &amp; go live</button>
-          </div>
-        </div></div>
-      </div>
-      <div class="glass"><h3>Backtest</h3>
-        <div class="body" id="results"><div class="empty">Describe an agent and run a backtest.</div></div>
-      </div>
-    </div>
-  </section>
+          <div class="card"><h3>Backtest</h3>
+            <div class="body" id="results"><div class="empty">Describe an agent and run a backtest.</div></div></div>
+        </div>
+      </section>
 
-  <section class="page" id="page-model">
-    <h1>The base model</h1>
-    <p class="sub">One model trained on every episode, shared by everyone. You don't train your own —
-      you filter on its score.</p>
-    <div id="modelBody"><div class="empty">Loading…</div></div>
-  </section>
+      <section class="page" id="page-model">
+        <h1>Base model</h1>
+        <p class="sub">One model trained on every episode, shared by everyone. You filter on its score.</p>
+        <div id="modelBody"></div>
+      </section>
 
-  <section class="page" id="page-mine">
-    <h1>My agents</h1>
-    <p class="sub">Every agent with its backtest beside how it is actually doing on live paper money.</p>
-    <div id="mineBody"><div class="empty">Loading…</div></div>
-  </section>
+      <section class="page" id="page-mine">
+        <h1>My agents</h1>
+        <p class="sub">Each agent's backtest beside how it is actually doing on live paper money.</p>
+        <div id="mineBody"></div>
+      </section>
 
-  <section class="page" id="page-board">
-    <h1>Leaderboard</h1>
-    <p class="sub">Backtest, paper and live rank separately and never merge.</p>
-    <div class="tabs">
-      <button class="tab bt" data-mode="backtest" aria-selected="true">Backtest</button>
-      <button class="tab bt" data-mode="paper" aria-selected="false">Paper</button>
-      <button class="tab bt" data-mode="live" aria-selected="false">Live</button>
-    </div>
-    <div class="glass"><div id="boardBody"><div class="empty">Loading…</div></div></div>
-  </section>
+      <section class="page" id="page-board">
+        <h1>Leaderboard</h1>
+        <p class="sub">Backtest, paper and live rank separately and never merge.</p>
+        <div class="tabs">
+          <button class="tab bt" data-mode="backtest" aria-selected="true">Backtest</button>
+          <button class="tab bt" data-mode="paper" aria-selected="false">Paper</button>
+          <button class="tab bt" data-mode="live" aria-selected="false">Live</button>
+        </div>
+        <div class="card"><div id="boardBody"></div></div>
+      </section>
+
+    </div></div>
+  </div>
 </div>
 
 <script type="module">
@@ -432,61 +468,144 @@ function coinHTML(r) {
   const label = esc(r.symbol || (r.mint || "").slice(0, 6));
   const pic = r.image
     ? `<img src="${IMGSRC}${encodeURIComponent(r.image)}" alt="" loading="lazy" decoding="async"
-         onerror="this.className='ph';this.removeAttribute('src')">`
+        onerror="this.className='ph';this.removeAttribute('src')">`
     : `<span class="ph"></span>`;
   return `<div class="coin">${pic}<span>${label}</span></div>`;
 }
-const stat = (k, v, c = "", s = "") =>
-  `<div class="glass stat"><div class="k">${k}</div><div class="v ${c}">${v}</div>${s?`<div class="s">${s}</div>`:""}</div>`;
+const ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/></svg>`;
+const kpi = (k, v, c = "", s = "") =>
+  `<div class="card kpi"><div class="badge">${ICON}</div><div class="k">${k}</div>
+   <div class="v ${c}">${v}</div><div class="s">${s}</div></div>`;
 
+/* ── ONE store. Every page renders from this, never from a fetch. ─────────
+   The whole "no delay" property comes from here: /api/bootstrap is fetched
+   once at load and refreshed in the background, so switching pages is a local
+   render with nothing to await and no spinner. */
+let S = null;
+let mode = "backtest";
 let page = (location.hash || "#home").slice(1);
 const PAGES = ["home","live","build","model","mine","board"];
+
+function renderAll() {
+  if (!S) return;
+  renderTop(); renderHome(); renderLivePanels(); renderModel(); renderMine(); renderBoard(mode);
+}
+
+async function refresh() {
+  try {
+    S = await api("/api/bootstrap");
+    if (!FEATURES.length) FEATURES = S.features || [];
+    renderAll();
+  } catch {}
+}
+
 function show(p) {
   if (!PAGES.includes(p)) p = "home";
   page = p; location.hash = p;
   PAGES.forEach((x) => $(`#page-${x}`).classList.toggle("on", x === p));
-  document.querySelectorAll(".navlink").forEach((el) =>
+  document.querySelectorAll(".nl").forEach((el) =>
     el.setAttribute("aria-current", el.dataset.page === p ? "page" : "false"));
-  if (p === "model") loadModel();
-  if (p === "mine") loadMine();
-  if (p === "board") loadBoard(mode);
-  if (p === "home") loadHome();
-  window.scrollTo({ top: 0, behavior: "instant" });
+  $(".content").scrollTop = 0;
 }
 document.querySelectorAll("[data-page]").forEach((el) => (el.onclick = () => show(el.dataset.page)));
 document.querySelectorAll("[data-go]").forEach((el) => (el.onclick = () => show(el.dataset.go)));
 addEventListener("hashchange", () => show((location.hash || "#home").slice(1)));
 
-async function navStats() {
-  try {
-    const s = await api("/api/stats");
-    $("#navstats").innerHTML =
-      `<div><b>${(+s.episodes||0).toLocaleString()}</b> episodes</div>
-       <div><b>${(+s.coins||0).toLocaleString()}</b> coins</div>
-       <div><b>${(+s.scored||0).toLocaleString()}</b> AI-scored</div>`;
-  } catch {}
-}
-navStats(); setInterval(navStats, 60000);
-
-async function loadHome() {
-  try {
-    const [s, m] = await Promise.all([api("/api/stats"), api("/api/model").catch(() => null)]);
-    $("#homeStats").innerHTML =
-      stat("Episodes", (+s.episodes||0).toLocaleString(), "", "launches on record") +
-      stat("Coins", (+s.coins||0).toLocaleString(), "", "seen and stored") +
-      stat("Model AUC", m && m.trained ? n(m.auc,3) : "—", "up", "held out by time") +
-      stat("Top decile", m && m.trained ? n(m.top10_rate*100,1)+"%" : "—", "up",
-           m && m.trained ? `${n(m.top10_lift,2)}× base rate` : "") +
-      stat("Latest data", String(s.newest||"").slice(5,16).replace(" ","  "), "", "UTC");
-  } catch {}
+// ── top bar + overview ───────────────────────────────────────────
+function renderTop() {
+  const p = S.paper, st = S.stats, m = S.model;
+  const tot = p.realisedPnl + p.unrealisedPnl;
+  $("#topPnl").textContent = (tot >= 0 ? "+" : "") + n(tot, 3);
+  $("#topPnl").className = "mono " + cls(tot);
+  $("#topEp").textContent = (+st.episodes || 0).toLocaleString();
+  $("#topCoins").textContent = (+st.coins || 0).toLocaleString();
+  $("#topAuc").textContent = m && m.trained ? n(m.auc, 3) : "—";
 }
 
-// ── live stream ──────────────────────────────────────────────────
-const MAX_ROWS = 70;
-function addTrade(t) {
-  const body = $("#txBody");
+function sparkline(curve) {
+  if (!curve || curve.length < 2) {
+    return `<div class="empty" style="padding:56px 0">No closed paper trades yet.</div>`;
+  }
+  const ys = curve.map((c) => +c.cum);
+  const lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+  const pad = (hi - lo) * .12 || 1;
+  const W = 100, H = 100;
+  const x = (i) => (i / (curve.length - 1)) * W;
+  const y = (v) => H - ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * H;
+  const pts = ys.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(" ");
+  const zero = y(0).toFixed(2);
+  const last = ys[ys.length - 1];
+  const col = last >= 0 ? "var(--green-lit)" : "var(--red)";
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${col}" stop-opacity=".26"/>
+      <stop offset="100%" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <line x1="0" y1="${zero}" x2="${W}" y2="${zero}" stroke="hsl(0 0% 100% / .12)"
+      stroke-width=".5" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>
+    <polygon points="0,${zero} ${pts} ${W},${zero}" fill="url(#g)"/>
+    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function renderHome() {
+  const p = S.paper, m = S.model;
+  const tot = p.realisedPnl + p.unrealisedPnl;
+  $("#kpis").innerHTML =
+    kpi("Paper PnL", (tot>=0?"+":"") + n(tot,3), cls(tot), "SOL across all agents") +
+    kpi("Win rate", n(p.winPct,1)+"%", "", `${p.nClosed} closed · ${p.nOpen} open`) +
+    kpi("Episodes", (+S.stats.episodes||0).toLocaleString(), "", "launches on record") +
+    kpi("Model lift", m && m.trained ? n(m.top10_lift,2)+"×" : "—", "up",
+        m && m.trained ? `top decile ${n(m.top10_rate*100,1)}% vs ${n(m.base_rate*100,1)}%` : "not trained");
+
+  $("#chart").innerHTML = sparkline(p.curve);
+  const ys = (p.curve||[]).map((c)=>+c.cum);
+  const peak = ys.length ? Math.max(...ys) : 0;
+  const trough = ys.length ? Math.min(...ys) : 0;
+  $("#chartFoot").innerHTML =
+    `<div><div class="k">Peak</div><div class="v ${cls(peak)}">${n(peak,3)}</div></div>
+     <div><div class="k">Worst</div><div class="v ${cls(trough)}">${n(trough,3)}</div></div>
+     <div><div class="k">Volume</div><div class="v">${n(p.volumeSol,1)} SOL</div></div>`;
+
+  $("#homeTrades").innerHTML = (p.recent||[]).slice(0,10).map((r)=>`<tr>
+      <td>${coinHTML(r)}</td><td>${esc(r.strategy_name)}</td>
+      <td class="num">${n(r.held_s,0)}s</td>
+      <td>${esc(String(r.exit_reason||"").replace(/_/g," "))}</td>
+      <td class="num ${cls(+r.pnl_sol)}">${n(r.pnl_sol,3)}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="empty">No paper trades yet.</td></tr>`;
+
+  $("#homeTx").innerHTML = (S.trades||[]).slice(0,10).map((t)=>`<tr>
+      <td>${coinHTML(t)}</td>
+      <td><span class="tag ${t.isBuy?"buy":"sell"}">${t.isBuy?"BUY":"SELL"}</span></td>
+      <td class="num">${n(t.solAmount,3)}</td>
+      <td class="num" style="color:var(--faint)">${ago(t.ts)}</td></tr>`).join("");
+}
+
+// ── live ─────────────────────────────────────────────────────────
+function renderLivePanels() {
+  const r = S.rate || {};
+  $("#scanKpis").innerHTML =
+    kpi("Scanning", r.trades ?? "—", "", "trades / 10s") +
+    kpi("Active coins", r.coins ?? "—", "", "trading right now") +
+    kpi("Volume", n(r.sol,1), "", "SOL / 10s") +
+    kpi("Feed", es && es.readyState === 1 ? "live" : "…", es && es.readyState === 1 ? "up" : "", "streamed, not polled");
+  $("#txRate").textContent = `${r.trades ?? 0} / 10s`;
+
+  const picks = S.picks || [];
+  $("#pickDot").className = picks.length ? "dot on" : "dot";
+  $("#pickBody").innerHTML = picks.map((p)=>`<tr>
+      <td>${coinHTML(p)}</td><td>${esc(p.strategyName||"")}</td>
+      <td class="num">${p.ageS}s</td><td class="num">${p.nTraders}</td>
+      <td class="num">${n(p.volSol,1)}</td>
+      <td><span class="tag ${esc(p.twitterKind)}">${esc(p.twitterKind)}</span></td></tr>`).join("")
+    || `<tr><td colspan="6" class="empty">No agent has matched in the last 15 minutes.</td></tr>`;
+}
+
+const MAX_ROWS = 80;
+function addTrade(t, animate = true) {
+  const body = $("#txBody"); if (!body) return;
   const tr = document.createElement("tr");
-  tr.className = "new";
+  if (animate) tr.className = "new";
   tr.innerHTML =
     `<td>${coinHTML(t)}</td>
      <td><span class="tag ${t.isBuy ? "buy" : "sell"}">${t.isBuy ? "BUY" : "SELL"}</span></td>
@@ -505,41 +624,14 @@ function openStream() {
   if (es) es.close();
   es = new EventSource(BASE + "api/live/stream");
   es.addEventListener("trade", (e) => { if (page === "live") addTrade(JSON.parse(e.data)); });
-  es.onopen = () => ($("#txDot").className = "dot on");
-  es.onerror = () => ($("#txDot").className = "dot");
+  es.onopen = () => { $("#txDot").className = "dot on"; $("#topDot").className = "dot on";
+    $("#topFeed").textContent = "Feed live"; };
+  es.onerror = () => { $("#txDot").className = "dot"; $("#topDot").className = "dot";
+    $("#topFeed").textContent = "Reconnecting"; };
 }
-api("/api/live/trades").then(({ trades }) => {
-  trades.slice().reverse().forEach(addTrade);
-  document.querySelectorAll("#txBody tr").forEach((tr) => tr.classList.remove("new"));
-}).catch(() => {}).finally(openStream);
-
-async function tickPicks() {
-  if (page !== "live") return;
-  try {
-    const { rate } = await api("/api/live/trades");
-    $("#scanStats").innerHTML =
-      stat("Scanning", rate.trades, "", "trades / 10s") +
-      stat("Coins", rate.coins, "", "active right now") +
-      stat("Volume", n(rate.sol,1), "", "SOL / 10s") +
-      stat("Feed", es && es.readyState === 1 ? "live" : "…", es && es.readyState === 1 ? "up" : "");
-    $("#txRate").textContent = `${rate.trades} / 10s`;
-  } catch {}
-  try {
-    const picks = await api("/api/live/picks");
-    $("#pickDot").className = picks.length ? "dot on" : "dot";
-    $("#pickBody").innerHTML = picks.map((p) => `<tr>
-      <td>${coinHTML(p)}</td><td>${esc(p.strategyName||"")}</td>
-      <td class="num">${p.ageS}s</td><td class="num">${p.nTraders}</td>
-      <td class="num">${n(p.volSol,1)}</td>
-      <td><span class="tag ${esc(p.twitterKind)}">${esc(p.twitterKind)}</span></td></tr>`).join("")
-      || `<tr><td colspan="6" class="empty">No agent has matched in the last 15 minutes.</td></tr>`;
-  } catch {}
-}
-tickPicks(); setInterval(tickPicks, 6000);
 
 // ── build ────────────────────────────────────────────────────────
 let FEATURES = [];
-await api("/api/features").then((f) => (FEATURES = f)).catch(() => {});
 const OPS = [["gte","≥"],["gt",">"],["lte","≤"],["lt","<"],["eq","="],["neq","≠"]];
 function filterRow(feature = "model_score", op = "gte", value = "0.5") {
   const el = document.createElement("div");
@@ -560,8 +652,8 @@ function filterRow(feature = "model_score", op = "gte", value = "0.5") {
       v.innerHTML = `<input class="v" type="number" step="any" value="${esc(value)}">`;
     }
     el.querySelector(".doc")?.remove();
-    const doc = document.createElement("div");
-    doc.className = "doc"; doc.textContent = d.doc; el.appendChild(doc);
+    const doc = document.createElement("div"); doc.className = "doc"; doc.textContent = d.doc;
+    el.appendChild(doc);
   };
   el.querySelector(".f").onchange = sync;
   el.querySelector("button").onclick = () => el.remove();
@@ -629,14 +721,14 @@ function renderBT(r) {
   if (!r.nTrades) { $("#results").innerHTML = `<div class="empty">Nothing matched these rules.</div>${warn}`; return; }
   const exits = Object.entries(r.exitBreakdown||{}).map(([k,v])=>`${k.replace(/_/g," ")} ${v}`).join(" · ");
   $("#results").innerHTML = `
-    <div class="stats" style="margin-bottom:14px">
-      ${stat("Per-trade","×"+n(r.geoMult,3), cls(r.geoMult-1), "compounds")}
-      ${stat("Win rate", n(r.winPct,1)+"%")}
-      ${stat("Trades", r.nTrades.toLocaleString())}
-      ${stat("Net PnL", n(r.totalPnlSol,2), cls(r.totalPnlSol), "SOL")}
+    <div class="grid g4" style="margin-bottom:14px">
+      ${kpi("Per-trade","×"+n(r.geoMult,3), cls(r.geoMult-1), "compounds")}
+      ${kpi("Win rate", n(r.winPct,1)+"%", "", `${r.nTrades} trades`)}
+      ${kpi("Net PnL", n(r.totalPnlSol,2), cls(r.totalPnlSol), "SOL")}
+      ${kpi("Avg hold", n(r.avgHoldS,0)+"s", "", "per position")}
     </div>
-    <p class="hint"><b>Per-trade</b> is the geometric mean — above ×1.000 is profitable after fees
-      and modelled slippage. Exits: ${esc(exits)}.</p>
+    <p class="hint"><b>Per-trade</b> is the geometric mean — above ×1.000 is profitable after fees and
+      modelled slippage. Exits: ${esc(exits)}.</p>
     ${warn}
     <details><summary>Compiled filter</summary><pre>${esc(r.sql||"")}</pre></details>
     <div class="scroll" style="max-height:330px;margin-top:12px"><table>
@@ -654,151 +746,145 @@ $("#deploy").onclick = async () => {
     const pub = await api("/api/strategies", { method:"POST",
       body: JSON.stringify({ strategy: read(), prompt: $("#prompt").value, isPublic: true }) });
     await api("/api/runs", { method:"POST", body: JSON.stringify({ strategyId: pub.id, bankrollSol: 10 }) });
-    show("mine");
+    await refresh(); show("mine");
   } catch (e) { alert(e.message); b.disabled = false; b.textContent = "Publish & go live"; }
 };
 
 // ── model ────────────────────────────────────────────────────────
-async function loadModel() {
-  try {
-    const m = await api("/api/model");
-    if (!m.trained) { $("#modelBody").innerHTML = `<div class="empty">No model trained yet.</div>`; return; }
-    const maxW = Math.max(...m.features.map((f) => Math.abs(f.weight)));
-    $("#modelBody").innerHTML = `
-      <div class="stats">
-        ${stat("AUC", n(m.auc,3), "up", "held out by time")}
-        ${stat("Top decile", n(m.top10_rate*100,1)+"%", "up", `${n(m.top10_lift,2)}× base rate`)}
-        ${stat("Base rate", n(m.base_rate*100,1)+"%", "", "all launches")}
-        ${stat("Trained on", (+m.n_train).toLocaleString(), "", "episodes")}
-        ${stat("Horizon", m.horizon_s+"s", "", "decision point")}
-      </div>
-      <div class="grid g2">
-        <div class="glass"><h3>What it predicts</h3><div class="body">
-          <p style="margin:0 0 13px">Probability a coin <b>${esc(m.label)}</b>.</p>
-          <p class="hint">Trained on everything before ${esc(String(m.train_cutoff).slice(0,16))} and scored
-            on everything after. Split by time, never randomly — launches cluster by dev and by trend, so a
-            random split leaks near-duplicates across the boundary and reports an accuracy the live feed
-            never delivers.</p>
-          <div style="margin-top:16px"><table>
-            <thead><tr><th>Model says</th><th>Episodes</th><th>Actually won</th></tr></thead>
-            <tbody>${m.calibration.map((c)=>`<tr>
-              <td class="num">${n(c.bucket*100,0)}–${n(c.bucket*100+10,0)}%</td>
-              <td class="num">${(+c.n).toLocaleString()}</td>
-              <td class="num ${c.actual>c.bucket*100?"up":""}">${n(c.actual,1)}%</td></tr>`).join("")}</tbody>
-          </table></div>
-        </div></div>
-        <div class="glass"><h3>What it learned</h3><div class="body">
-          <p class="hint" style="margin:0 0 13px">Coefficients on standardised features. Green pushes the
-            score up, red pushes it down.</p>
-          <table><tbody>${m.features.slice(0,14).map((f)=>`<tr>
-            <td>${esc(f.name)}</td>
-            <td style="width:58%"><div class="bar"><i style="width:${(Math.abs(f.weight)/maxW*100).toFixed(0)}%;background:${f.weight>0?"var(--green-lit)":"var(--red)"}"></i></div></td>
-            <td class="num ${cls(f.weight)}">${f.weight>0?"+":""}${n(f.weight,3)}</td></tr>`).join("")}</tbody></table>
-        </div></div>
-      </div>
-      <div class="glass" style="margin-top:16px"><h3>Its best calls right now</h3>
-        <div class="scroll" style="max-height:340px"><table>
-          <thead><tr><th>Coin</th><th>Score</th><th>Age</th><th>Traders</th><th>Vol</th><th>X</th></tr></thead>
-          <tbody>${m.picks.map((p)=>`<tr>
-            <td>${coinHTML(p)}</td><td class="num up">${n(p.score,3)}</td>
-            <td class="num">${p.ageS}s</td><td class="num">${p.nTraders}</td>
-            <td class="num">${n(p.volSol,1)}</td>
-            <td><span class="tag ${esc(p.twitterKind)}">${esc(p.twitterKind)}</span></td></tr>`).join("")
-            || `<tr><td colspan="6" class="empty">No live candidates.</td></tr>`}</tbody>
-        </table></div></div>`;
-  } catch (e) { $("#modelBody").innerHTML = `<div class="note err">${esc(e.message)}</div>`; }
+function renderModel() {
+  const m = S.model;
+  if (!m || !m.trained) { $("#modelBody").innerHTML = `<div class="card"><div class="empty">No model trained yet.</div></div>`; return; }
+  const maxW = Math.max(...m.features.map((f) => Math.abs(f.weight)));
+  $("#modelBody").innerHTML = `
+    <div class="grid g4" style="margin-bottom:16px">
+      ${kpi("AUC", n(m.auc,3), "up", "held out by time")}
+      ${kpi("Top decile", n(m.top10_rate*100,1)+"%", "up", `${n(m.top10_lift,2)}× base rate`)}
+      ${kpi("Base rate", n(m.base_rate*100,1)+"%", "", "all launches")}
+      ${kpi("Trained on", (+m.n_train).toLocaleString(), "", `${m.horizon_s}s horizon`)}
+    </div>
+    <div class="grid g2">
+      <div class="card"><h3>What it predicts</h3><div class="body">
+        <p style="margin:0 0 12px">Probability a coin <b>${esc(m.label)}</b>.</p>
+        <p class="hint">Trained on everything before ${esc(String(m.train_cutoff).slice(0,16))} and scored
+          on everything after. Split by time, never randomly — launches cluster by dev and by trend, so a
+          random split leaks near-duplicates across the boundary and reports an accuracy the live feed
+          never delivers.</p></div>
+        <div class="scroll" style="max-height:300px"><table>
+          <thead><tr><th>Model says</th><th>Episodes</th><th>Actually won</th></tr></thead>
+          <tbody>${m.calibration.map((c)=>`<tr>
+            <td class="num">${n(c.bucket*100,0)}–${n(c.bucket*100+10,0)}%</td>
+            <td class="num">${(+c.n).toLocaleString()}</td>
+            <td class="num ${c.actual>c.bucket*100?"up":""}">${n(c.actual,1)}%</td></tr>`).join("")}</tbody>
+        </table></div></div>
+      <div class="card"><h3>What it learned</h3><div class="body">
+        <p class="hint" style="margin:0">Coefficients on standardised features. Green pushes the score
+          up, red pushes it down.</p></div>
+        <div class="scroll" style="max-height:300px"><table><tbody>${m.features.slice(0,14).map((f)=>`<tr>
+          <td>${esc(f.name)}</td>
+          <td style="width:55%"><div class="bar"><i style="width:${(Math.abs(f.weight)/maxW*100).toFixed(0)}%;background:${f.weight>0?"var(--green-lit)":"var(--red)"}"></i></div></td>
+          <td class="num ${cls(f.weight)}">${f.weight>0?"+":""}${n(f.weight,3)}</td></tr>`).join("")}</tbody>
+        </table></div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Its best calls right now</h3>
+      <div class="scroll" style="max-height:340px"><table>
+        <thead><tr><th>Coin</th><th>Score</th><th>Age</th><th>Traders</th><th>Vol</th><th>X</th></tr></thead>
+        <tbody>${(m.picks||[]).map((p)=>`<tr>
+          <td>${coinHTML(p)}</td><td class="num up">${n(p.score,3)}</td>
+          <td class="num">${p.ageS}s</td><td class="num">${p.nTraders}</td>
+          <td class="num">${n(p.volSol,1)}</td>
+          <td><span class="tag ${esc(p.twitterKind)}">${esc(p.twitterKind)}</span></td></tr>`).join("")
+          || `<tr><td colspan="6" class="empty">No live candidates.</td></tr>`}</tbody>
+      </table></div></div>`;
 }
 
 // ── my agents ────────────────────────────────────────────────────
-async function loadMine() {
-  try {
-    const rows = await api("/api/agents");
-    const paper = await api("/api/paper").catch(() => null);
-    if (!rows.length) { $("#mineBody").innerHTML = `<div class="glass"><div class="empty">No agents yet — build one.</div></div>`; return; }
-    const tot = paper ? `<div class="stats">
-        ${stat("Total PnL", n(paper.realisedPnl+paper.unrealisedPnl,3), cls(paper.realisedPnl+paper.unrealisedPnl), "SOL, all agents")}
-        ${stat("Realised", n(paper.realisedPnl,3), cls(paper.realisedPnl))}
-        ${stat("Open", n(paper.unrealisedPnl,3), cls(paper.unrealisedPnl))}
-        ${stat("Win rate", n(paper.winPct,1)+"%")}
-        ${stat("Closed", paper.nClosed)}
-        ${stat("Holding", paper.nOpen)}</div>` : "";
-    $("#mineBody").innerHTML = tot + `
-      <div class="glass"><h3>Agents</h3><div class="scroll"><table>
-        <thead><tr><th>Agent</th><th>Status</th><th>Backtest</th><th>BT trades</th>
-          <th>Paper PnL</th><th>Trades</th><th>Win</th><th>Holding</th><th></th></tr></thead>
-        <tbody>${rows.map((r)=>`<tr>
-          <td title="${esc(r.thesis||"")}">${esc(r.name)}</td>
-          <td>${r.run_status==="running"?'<span class="tag buy">live</span>'
-              : r.run_status==="halted"?'<span class="tag sell">halted</span>'
-              : r.run_status?'<span class="tag">stopped</span>':'<span class="tag">—</span>'}</td>
-          <td class="num ${cls((+r.bt_geo||0)-1)}">${r.bt_geo!=null?"×"+n(r.bt_geo,3):"—"}</td>
-          <td class="num">${r.bt_trades ?? "—"}</td>
-          <td class="num ${cls(+r.paper_pnl)}">${n(r.paper_pnl,3)}</td>
-          <td class="num">${r.paper_trades}</td>
-          <td class="num">${+r.paper_trades ? n(r.paper_win,1)+"%" : "—"}</td>
-          <td class="num">${r.paper_open}</td>
-          <td>${r.run_id && r.run_status==="running"
-              ? `<button class="ghost sm" data-stop="${esc(r.run_id)}">stop</button>`
-              : `<button class="ghost sm" data-start="${esc(r.id)}">start</button>`}</td></tr>`).join("")}
-        </tbody></table></div></div>
-      ${paper && paper.open.length ? `<div class="glass" style="margin-top:16px"><h3>Holding now</h3>
-        <div class="scroll" style="max-height:300px"><table>
-        <thead><tr><th>Coin</th><th>Agent</th><th>Size</th><th>Now</th><th>Open PnL</th></tr></thead>
-        <tbody>${paper.open.map((p)=>{const m=+p.mult||0,pl=p.size_sol*(m-1);return `<tr>
-          <td>${coinHTML(p)}</td><td>${esc(p.strategy_name)}</td><td class="num">${n(p.size_sol,2)}</td>
-          <td class="num ${cls(m-1)}">×${n(m,2)}</td><td class="num ${cls(pl)}">${n(pl,3)}</td></tr>`;}).join("")}
-        </tbody></table></div></div>`:""}
-      ${paper && paper.recent.length ? `<div class="glass" style="margin-top:16px"><h3>Recently closed</h3>
-        <div class="scroll" style="max-height:340px"><table>
-        <thead><tr><th>Coin</th><th>Agent</th><th>Held</th><th>Exit</th><th>PnL</th></tr></thead>
-        <tbody>${paper.recent.map((p)=>`<tr>
-          <td>${coinHTML(p)}</td><td>${esc(p.strategy_name)}</td><td class="num">${n(p.held_s,0)}s</td>
-          <td>${esc(String(p.exit_reason||"").replace(/_/g," "))}</td>
-          <td class="num ${cls(+p.pnl_sol)}">${n(p.pnl_sol,3)}</td></tr>`).join("")}
-        </tbody></table></div></div>`:""}`;
-    document.querySelectorAll("[data-stop]").forEach((b)=>b.onclick=async()=>{
-      b.disabled=true; await api(`/api/runs/${b.dataset.stop}/stop`,{method:"POST"}); loadMine(); });
-    document.querySelectorAll("[data-start]").forEach((b)=>b.onclick=async()=>{
-      b.disabled=true;
-      await api("/api/runs",{method:"POST",body:JSON.stringify({strategyId:b.dataset.start,bankrollSol:10})});
-      loadMine(); });
-  } catch (e) { $("#mineBody").innerHTML = `<div class="note err">${esc(e.message)}</div>`; }
+function renderMine() {
+  const rows = S.agents || [], p = S.paper;
+  if (!rows.length) { $("#mineBody").innerHTML = `<div class="card"><div class="empty">No agents yet — build one.</div></div>`; return; }
+  const tot = p.realisedPnl + p.unrealisedPnl;
+  $("#mineBody").innerHTML = `
+    <div class="grid g4" style="margin-bottom:16px">
+      ${kpi("Total PnL", (tot>=0?"+":"")+n(tot,3), cls(tot), "SOL, all agents")}
+      ${kpi("Realised", n(p.realisedPnl,3), cls(p.realisedPnl), `${p.nClosed} closed`)}
+      ${kpi("Open", n(p.unrealisedPnl,3), cls(p.unrealisedPnl), `${p.nOpen} holding`)}
+      ${kpi("Win rate", n(p.winPct,1)+"%", "", `${n(p.volumeSol,1)} SOL volume`)}
+    </div>
+    <div class="card"><h3>Agents</h3><div class="scroll"><table>
+      <thead><tr><th>Agent</th><th>Status</th><th>Backtest</th><th>BT trades</th>
+        <th>Paper PnL</th><th>Trades</th><th>Win</th><th>Holding</th><th></th></tr></thead>
+      <tbody>${rows.map((r)=>`<tr>
+        <td title="${esc(r.thesis||"")}">${esc(r.name)}</td>
+        <td>${r.run_status==="running"?'<span class="tag live">live</span>'
+            : r.run_status==="halted"?'<span class="tag halted">halted</span>'
+            : r.run_status?'<span class="tag">stopped</span>':'<span class="tag">—</span>'}</td>
+        <td class="num ${cls((+r.bt_geo||0)-1)}">${r.bt_geo!=null?"×"+n(r.bt_geo,3):"—"}</td>
+        <td class="num">${r.bt_trades ?? "—"}</td>
+        <td class="num ${cls(+r.paper_pnl)}">${n(r.paper_pnl,3)}</td>
+        <td class="num">${r.paper_trades}</td>
+        <td class="num">${+r.paper_trades ? n(r.paper_win,1)+"%" : "—"}</td>
+        <td class="num">${r.paper_open}</td>
+        <td>${r.run_id && r.run_status==="running"
+            ? `<button class="ghost sm" data-stop="${esc(r.run_id)}">stop</button>`
+            : `<button class="ghost sm" data-start="${esc(r.id)}">start</button>`}</td></tr>`).join("")}
+      </tbody></table></div></div>
+    ${p.open.length ? `<div class="card" style="margin-top:16px"><h3>Holding now</h3>
+      <div class="scroll" style="max-height:290px"><table>
+      <thead><tr><th>Coin</th><th>Agent</th><th>Size</th><th>Now</th><th>Open PnL</th></tr></thead>
+      <tbody>${p.open.map((o)=>{const m=+o.mult||0,pl=o.size_sol*(m-1);return `<tr>
+        <td>${coinHTML(o)}</td><td>${esc(o.strategy_name)}</td><td class="num">${n(o.size_sol,2)}</td>
+        <td class="num ${cls(m-1)}">×${n(m,2)}</td><td class="num ${cls(pl)}">${n(pl,3)}</td></tr>`;}).join("")}
+      </tbody></table></div></div>`:""}
+    ${p.recent.length ? `<div class="card" style="margin-top:16px"><h3>Recently closed</h3>
+      <div class="scroll" style="max-height:340px"><table>
+      <thead><tr><th>Coin</th><th>Agent</th><th>Held</th><th>Exit</th><th>PnL</th></tr></thead>
+      <tbody>${p.recent.map((o)=>`<tr>
+        <td>${coinHTML(o)}</td><td>${esc(o.strategy_name)}</td><td class="num">${n(o.held_s,0)}s</td>
+        <td>${esc(String(o.exit_reason||"").replace(/_/g," "))}</td>
+        <td class="num ${cls(+o.pnl_sol)}">${n(o.pnl_sol,3)}</td></tr>`).join("")}
+      </tbody></table></div></div>`:""}`;
+  document.querySelectorAll("[data-stop]").forEach((b)=>b.onclick=async()=>{
+    b.disabled=true; await api(`/api/runs/${b.dataset.stop}/stop`,{method:"POST"}); refresh(); });
+  document.querySelectorAll("[data-start]").forEach((b)=>b.onclick=async()=>{
+    b.disabled=true;
+    await api("/api/runs",{method:"POST",body:JSON.stringify({strategyId:b.dataset.start,bankrollSol:10})});
+    refresh(); });
 }
 
 // ── leaderboard ──────────────────────────────────────────────────
-let mode = "backtest";
-async function loadBoard(m) {
+async function renderBoard(m) {
   mode = m;
-  $("#boardBody").innerHTML = `<div class="empty">Loading…</div>`;
-  try {
-    const rows = await api(`/api/leaderboard?mode=${m}`);
-    if (!rows.length) {
-      $("#boardBody").innerHTML = `<div class="empty">${m==="backtest"
-        ? "No published agent has 30+ backtest trades yet."
-        : `No ${m} runs with closed trades yet.`}</div>`;
-      return;
-    }
-    $("#boardBody").innerHTML = `<div class="scroll"><table>
-      <thead><tr><th>#</th><th>Agent</th><th>Trades</th><th>Win</th>
-        <th>${m==="backtest"?"Per-trade":"Status"}</th><th>PnL</th><th>Volume</th></tr></thead>
-      <tbody>${rows.map((r,i)=>`<tr>
-        <td>${["🥇","🥈","🥉"][i] || i+1}</td>
-        <td title="${esc(r.thesis||"")}">${esc(r.name)}</td>
-        <td class="num">${(+r.n_trades).toLocaleString()}</td>
-        <td class="num">${n(r.win_pct,1)}%</td>
-        <td class="num">${m==="backtest"
-          ? `<span class="${+r.geo_mult>1?"up":"down"}">×${n(r.geo_mult,3)}</span>`
-          : `<span class="tag">${esc(r.status||"")}</span>`}</td>
-        <td class="num ${cls(+r.total_pnl_sol)}">${n(r.total_pnl_sol,2)}</td>
-        <td class="num">${n(r.volume_sol,1)}</td></tr>`).join("")}</tbody></table></div>`;
-  } catch (e) { $("#boardBody").innerHTML = `<div class="note err">${esc(e.message)}</div>`; }
+  // Backtest ships in the bootstrap; the other two are rare enough to fetch.
+  const rows = m === "backtest" ? (S.board || []) : await api(`/api/leaderboard?mode=${m}`).catch(() => []);
+  if (!rows.length) {
+    $("#boardBody").innerHTML = `<div class="empty">${m==="backtest"
+      ? "No published agent has 30+ backtest trades yet."
+      : `No ${m} runs with closed trades yet.`}</div>`;
+    return;
+  }
+  $("#boardBody").innerHTML = `<div class="scroll"><table>
+    <thead><tr><th>#</th><th>Agent</th><th>Trades</th><th>Win</th>
+      <th>${m==="backtest"?"Per-trade":"Status"}</th><th>PnL</th><th>Volume</th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>
+      <td>${["🥇","🥈","🥉"][i] || i+1}</td>
+      <td title="${esc(r.thesis||"")}">${esc(r.name)}</td>
+      <td class="num">${(+r.n_trades).toLocaleString()}</td>
+      <td class="num">${n(r.win_pct,1)}%</td>
+      <td class="num">${m==="backtest"
+        ? `<span class="${+r.geo_mult>1?"up":"down"}">×${n(r.geo_mult,3)}</span>`
+        : `<span class="tag">${esc(r.status||"")}</span>`}</td>
+      <td class="num ${cls(+r.total_pnl_sol)}">${n(r.total_pnl_sol,2)}</td>
+      <td class="num">${n(r.volume_sol,1)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 document.querySelectorAll(".tab.bt").forEach((t)=>t.onclick=()=>{
   document.querySelectorAll(".tab.bt").forEach((x)=>x.setAttribute("aria-selected",String(x===t)));
-  loadBoard(t.dataset.mode); });
+  renderBoard(t.dataset.mode); });
 
-setInterval(() => { if (page === "mine") loadMine(); }, 8000);
+// ── boot ─────────────────────────────────────────────────────────
 show(page);
+await refresh();
+(S.trades || []).slice().reverse().forEach((t) => addTrade(t, false));
+openStream();
+setInterval(refresh, 5000);
 </script>
 </body>
 </html>

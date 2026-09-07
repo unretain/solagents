@@ -10,6 +10,7 @@ import { strategySchema, explainInvalid, type Strategy } from "./strategy/schema
 import { livePicks, liveTape, publishedPicks, liveTrades, scanRate } from "./live.js";
 import { startPaperEngine } from "./paper.js";
 import { attach } from "./stream.js";
+import { memo, invalidate } from "./cache.js";
 import { TP_MULT, SL_MULT } from "./model/spec.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
@@ -123,6 +124,7 @@ app.post("/api/strategies", async (req, res, next) => {
       [newId("bt"), id, r.from, r.to, r.nTrades, r.winPct, r.geoMult,
        r.totalPnlSol, r.volumeSol, r.maxDrawdownSol, JSON.stringify(r)],
     );
+    invalidate("agents"); invalidate("board");
     res.json({ id, backtest: r });
   } catch (e) { next(e); }
 });
@@ -158,12 +160,9 @@ app.get("/api/strategies/:id", async (req, res, next) => {
  * present, and only a live run risked anything. Blending them would let a
  * strategy that has never traded outrank one that has.
  */
-app.get("/api/leaderboard", async (req, res, next) => {
-  try {
-    const mode = z.enum(["backtest", "paper", "live"]).catch("backtest").parse(req.query.mode);
-
-    if (mode === "backtest") {
-      return res.json(await q(`
+async function leaderboard(mode: "backtest" | "paper" | "live"): Promise<unknown[]> {
+  if (mode === "backtest") {
+    return q(`
         SELECT s.id, s.name, s.thesis, b.n_trades, b.win_pct, b.geo_mult,
                b.total_pnl_sol, b.volume_sol, b.max_dd_sol, b.created_at
         FROM sa_strategy s
@@ -174,10 +173,9 @@ app.get("/api/leaderboard", async (req, res, next) => {
         WHERE s.is_public
           -- Below this a rank is noise, not skill.
           AND b.n_trades >= 30
-        ORDER BY b.geo_mult DESC LIMIT 100`));
-    }
-
-    res.json(await q(`
+        ORDER BY b.geo_mult DESC LIMIT 100`);
+  }
+  return q(`
       SELECT r.id AS run_id, s.id, s.name, s.thesis, r.mode, r.status, r.halt_reason,
              r.bankroll_sol, r.started_at,
              count(p.id) FILTER (WHERE p.closed_at IS NOT NULL) AS n_trades,
@@ -190,99 +188,38 @@ app.get("/api/leaderboard", async (req, res, next) => {
       WHERE r.mode = $1 AND s.is_public
       GROUP BY r.id, s.id
       HAVING count(p.id) FILTER (WHERE p.closed_at IS NOT NULL) > 0
-      ORDER BY total_pnl_sol DESC LIMIT 100`, [mode]));
+      ORDER BY total_pnl_sol DESC LIMIT 100`, [mode]);
+}
+
+app.get("/api/leaderboard", async (req, res, next) => {
+  try {
+    const mode = z.enum(["backtest", "paper", "live"]).catch("backtest").parse(req.query.mode);
+    res.json(await memo(`board:${mode}`, 20_000, () => leaderboard(mode)));
   } catch (e) { next(e); }
 });
 
-/** Live tape — what the feed is seeing right now, unfiltered. Lets an empty
- *  picks list be told apart from a stalled feed. */
-app.get("/api/live/tape", async (_req, res, next) => {
-  try { res.json(await liveTape()); } catch (e) { next(e); }
-});
+// ─────────────────────────── live feed ───────────────────────────
 
 /** Live trade stream. One tailer fans out to every connected browser. */
 app.get("/api/live/stream", (_req, res) => attach(res));
 
-/** The raw firehose as a snapshot — used to fill the table before the stream
- *  produces its first rows, so the panel is never empty on load. */
+/** Raw firehose snapshot — fills the table before the stream's first events. */
 app.get("/api/live/trades", async (_req, res, next) => {
   try {
-    const [trades, rate] = await Promise.all([liveTrades(60), scanRate()]);
-    res.json({ trades, rate });
+    res.json(await memo("trades", 3_000, async () => ({
+      trades: await liveTrades(60),
+      rate: await scanRate(),
+    })));
   } catch (e) { next(e); }
 });
 
-/**
- * The base model card: what it predicts, how well, and what it learned.
- *
- * Calibration is recomputed live against held-out episodes rather than stored,
- * so the page shows how the model is doing on data it has never seen — which is
- * the only version of the number worth showing anyone.
- */
-app.get("/api/model", async (_req, res, next) => {
-  try {
-    const [card] = await q<Record<string, unknown>>(
-      `SELECT * FROM sa_model ORDER BY trained_at DESC LIMIT 1`,
-    );
-    if (!card) return res.json({ trained: false });
-
-    const calibration = await chQuery<{ bucket: number; n: number; actual: number }>(`
-      WITH
-        arrayFirstIndex(x -> x >= e.px_at_h * ${TP_MULT}, p.pxs) AS up_i,
-        arrayFirstIndex(x -> x <= e.px_at_h * ${SL_MULT}, p.pxs) AS dn_i,
-        toUInt8(if(up_i=0,99999,up_i) < if(dn_i=0,99999,dn_i)) AS y
-      SELECT floor(e.model_score*10)/10 AS bucket, count() AS n, round(100*avg(y),2) AS actual
-      FROM episodes_enriched AS e
-      INNER JOIN (SELECT mint, horizon_s, pxs FROM episode_paths FINAL) AS p
-        ON e.mint = p.mint AND e.horizon_s = p.horizon_s
-      WHERE e.horizon_s = ${Number(card.horizon_s) || 60} AND e.px_at_h > 0
-        AND e.t0 > toDateTime64('${String(card.train_cutoff).replace(/'/g, "")}', 3)
-      GROUP BY bucket ORDER BY bucket
-      FORMAT JSON`);
-
-    // Its current best live candidates, so the page is not just history.
-    const picks = await chQuery(`
-      SELECT mint, symbol, age_now_s AS ageS, n_traders AS nTraders,
-             round(vol_sol,2) AS volSol, twitter_kind AS twitterKind,
-             round(model_score,3) AS score
-      FROM live_snapshot
-      WHERE horizon_s = ${Number(card.horizon_s) || 60} AND n_trades >= 3
-      ORDER BY model_score DESC LIMIT 10 FORMAT JSON`);
-
-    res.json({ trained: true, ...card, calibration, picks });
-  } catch (e) { next(e); }
+/** What the feed is seeing right now, unfiltered. */
+app.get("/api/live/tape", async (_req, res, next) => {
+  try { res.json(await memo("tape", 5_000, () => liveTape())); } catch (e) { next(e); }
 });
 
-/** Strategies with their latest backtest and their live paper performance. */
-app.get("/api/agents", async (_req, res, next) => {
-  try {
-    res.json(await q(`
-      SELECT s.id, s.name, s.thesis, s.prompt, s.config, s.created_at,
-             b.n_trades AS bt_trades, b.win_pct AS bt_win, b.geo_mult AS bt_geo,
-             b.total_pnl_sol AS bt_pnl,
-             r.id AS run_id, r.status AS run_status, r.halt_reason,
-             coalesce(p.n_closed, 0)  AS paper_trades,
-             coalesce(p.pnl, 0)       AS paper_pnl,
-             coalesce(p.win_pct, 0)   AS paper_win,
-             coalesce(p.n_open, 0)    AS paper_open
-      FROM sa_strategy s
-      LEFT JOIN LATERAL (
-        SELECT * FROM sa_backtest b2 WHERE b2.strategy_id = s.id
-        ORDER BY b2.created_at DESC LIMIT 1) b ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT * FROM sa_run r2 WHERE r2.strategy_id = s.id
-        ORDER BY r2.started_at DESC LIMIT 1) r ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT count(*) FILTER (WHERE closed_at IS NOT NULL)               AS n_closed,
-               count(*) FILTER (WHERE closed_at IS NULL)                   AS n_open,
-               coalesce(sum(pnl_sol), 0)                                   AS pnl,
-               coalesce(avg((pnl_sol > 0)::int) FILTER (WHERE closed_at IS NOT NULL), 0) * 100 AS win_pct
-        FROM sa_position WHERE run_id = r.id) p ON TRUE
-      ORDER BY s.created_at DESC LIMIT 100`));
-  } catch (e) { next(e); }
-});
-
-/** Live matches for a draft strategy the user has not saved yet. */
+/** Live matches for a draft strategy the user has not saved yet. Not cached —
+ *  the whole point is to reflect the config currently on screen. */
 app.post("/api/live/test", async (req, res, next) => {
   try {
     const parsed = strategySchema.safeParse(z.object({ strategy: z.unknown() }).parse(req.body).strategy);
@@ -291,14 +228,95 @@ app.post("/api/live/test", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+async function pickRows(): Promise<unknown[]> {
+  const rows = await q<{ id: string; name: string; config: Strategy }>(
+    `SELECT id, name, config FROM sa_strategy WHERE is_public ORDER BY created_at DESC LIMIT 25`);
+  return publishedPicks(rows);
+}
+
 /** Live picks across every published strategy — the public board. */
 app.get("/api/live/picks", async (_req, res, next) => {
-  try {
-    const rows = await q<{ id: string; name: string; config: Strategy }>(
-      `SELECT id, name, config FROM sa_strategy WHERE is_public ORDER BY created_at DESC LIMIT 25`,
-    );
-    res.json(await publishedPicks(rows));
-  } catch (e) { next(e); }
+  try { res.json(await memo("picks", 5_000, pickRows)); } catch (e) { next(e); }
+});
+
+// ─────────────────────────── model & agents ───────────────────────
+
+/**
+ * The base model card: what it predicts, how well, and what it learned.
+ *
+ * Calibration is recomputed against held-out episodes rather than stored, so the
+ * page shows how the model does on data it has never seen — the only version of
+ * that number worth showing anyone. It is also the most expensive read on the
+ * dashboard, hence the 2-minute memo: it changes only when the model is
+ * retrained, which is nightly.
+ */
+async function modelCard(): Promise<Record<string, unknown>> {
+  return memo("model", 120_000, async () => {
+    const [card] = await q<Record<string, unknown>>(
+      `SELECT * FROM sa_model ORDER BY trained_at DESC LIMIT 1`);
+    if (!card) return { trained: false };
+
+    const horizon = Number(card.horizon_s) || 60;
+    const cutoff = String(card.train_cutoff).replace(/'/g, "");
+    const [calibration, picks] = await Promise.all([
+      chQuery<{ bucket: number; n: number; actual: number }>(`
+        WITH
+          arrayFirstIndex(x -> x >= e.px_at_h * ${TP_MULT}, p.pxs) AS up_i,
+          arrayFirstIndex(x -> x <= e.px_at_h * ${SL_MULT}, p.pxs) AS dn_i,
+          toUInt8(if(up_i=0,99999,up_i) < if(dn_i=0,99999,dn_i)) AS y
+        SELECT floor(e.model_score*10)/10 AS bucket, count() AS n, round(100*avg(y),2) AS actual
+        FROM episodes_enriched AS e
+        INNER JOIN (SELECT mint, horizon_s, pxs FROM episode_paths FINAL) AS p
+          ON e.mint = p.mint AND e.horizon_s = p.horizon_s
+        WHERE e.horizon_s = ${horizon} AND e.px_at_h > 0
+          AND e.t0 > toDateTime64('${cutoff}', 3)
+        GROUP BY bucket ORDER BY bucket
+        FORMAT JSON`),
+      chQuery(`
+        SELECT mint, symbol, image, age_now_s AS ageS, n_traders AS nTraders,
+               round(vol_sol,2) AS volSol, twitter_kind AS twitterKind,
+               round(model_score,3) AS score
+        FROM live_snapshot
+        WHERE horizon_s = ${horizon} AND n_trades >= 3
+        ORDER BY model_score DESC LIMIT 10 FORMAT JSON`),
+    ]);
+    return { trained: true, ...card, calibration, picks };
+  });
+}
+
+app.get("/api/model", async (_req, res, next) => {
+  try { res.json(await modelCard()); } catch (e) { next(e); }
+});
+
+/** Strategies with their latest backtest and their live paper performance. */
+async function agentRows(): Promise<unknown[]> {
+  return q(`
+    SELECT s.id, s.name, s.thesis, s.prompt, s.config, s.created_at,
+           b.n_trades AS bt_trades, b.win_pct AS bt_win, b.geo_mult AS bt_geo,
+           b.total_pnl_sol AS bt_pnl,
+           r.id AS run_id, r.status AS run_status, r.halt_reason,
+           coalesce(p.n_closed, 0)  AS paper_trades,
+           coalesce(p.pnl, 0)       AS paper_pnl,
+           coalesce(p.win_pct, 0)   AS paper_win,
+           coalesce(p.n_open, 0)    AS paper_open
+    FROM sa_strategy s
+    LEFT JOIN LATERAL (
+      SELECT * FROM sa_backtest b2 WHERE b2.strategy_id = s.id
+      ORDER BY b2.created_at DESC LIMIT 1) b ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT * FROM sa_run r2 WHERE r2.strategy_id = s.id
+      ORDER BY r2.started_at DESC LIMIT 1) r ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE closed_at IS NOT NULL)               AS n_closed,
+             count(*) FILTER (WHERE closed_at IS NULL)                   AS n_open,
+             coalesce(sum(pnl_sol), 0)                                   AS pnl,
+             coalesce(avg((pnl_sol > 0)::int) FILTER (WHERE closed_at IS NOT NULL), 0) * 100 AS win_pct
+      FROM sa_position WHERE run_id = r.id) p ON TRUE
+    ORDER BY s.created_at DESC LIMIT 100`);
+}
+
+app.get("/api/agents", async (_req, res, next) => {
+  try { res.json(await memo("agents", 5_000, agentRows)); } catch (e) { next(e); }
 });
 
 /** Start a paper run for a saved strategy. */
@@ -322,6 +340,7 @@ app.post("/api/runs", async (req, res, next) => {
       `INSERT INTO sa_run (id, strategy_id, owner_id, mode, bankroll_sol) VALUES ($1,$2,$3,'paper',$4)`,
       [id, body.strategyId, body.ownerId, body.bankrollSol],
     );
+    invalidate("agents");
     res.json({ id, mode: "paper" });
   } catch (e) { next(e); }
 });
@@ -330,56 +349,110 @@ app.post("/api/runs/:id/stop", async (req, res, next) => {
   try {
     await q(`UPDATE sa_run SET status='stopped', stopped_at=now() WHERE id=$1 AND status='running'`,
       [req.params.id]);
+    invalidate("agents");
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
 
-/** Live paper state: open positions, recent closes, running PnL and win rate. */
-app.get("/api/paper", async (_req, res, next) => {
-  try {
-    const [totals] = await q(`
+/**
+ * Live paper state: totals, open positions, recent closes, and the equity curve.
+ *
+ * The curve is a running sum over closed positions in time order. Computed in
+ * SQL rather than the browser so the chart is identical for everyone and does
+ * not depend on how many rows the client happened to fetch.
+ */
+async function paperState(): Promise<Record<string, unknown>> {
+  const [totals] = await q<Record<string, string>>(`
       SELECT
         coalesce(sum(p.pnl_sol) FILTER (WHERE p.closed_at IS NOT NULL), 0)          AS realised_pnl,
         count(*) FILTER (WHERE p.closed_at IS NOT NULL)                             AS n_closed,
         count(*) FILTER (WHERE p.closed_at IS NOT NULL AND p.pnl_sol > 0)           AS n_wins,
         count(*) FILTER (WHERE p.closed_at IS NULL)                                 AS n_open,
         coalesce(sum(p.size_sol), 0)                                                AS volume_sol,
-        -- Mark-to-market on open positions, so the headline number is not stale
-        -- while several positions are still running.
         coalesce(sum(p.size_sol * ((p.last_px / nullif(p.entry_px,0)) * (1 - p.cost_frac) - 1))
                  FILTER (WHERE p.closed_at IS NULL), 0)                             AS unrealised_pnl
       FROM sa_position p JOIN sa_run r ON r.id = p.run_id
       WHERE r.mode = 'paper'`);
 
-    const open = await q(`
-      SELECT p.mint, p.symbol, p.image, p.size_sol, p.entry_px, p.last_px, p.peak_px,
-             p.opened_at, s.name AS strategy_name,
-             (p.last_px / nullif(p.entry_px,0)) * (1 - p.cost_frac) AS mult
-      FROM sa_position p
-      JOIN sa_run r ON r.id = p.run_id
-      JOIN sa_strategy s ON s.id = r.strategy_id
-      WHERE p.closed_at IS NULL AND r.mode='paper'
-      ORDER BY p.opened_at DESC LIMIT 40`);
+  const [open, recent, curve] = await Promise.all([
+    q(`SELECT p.mint, p.symbol, p.image, p.size_sol, p.entry_px, p.last_px, p.peak_px,
+              p.opened_at, s.name AS strategy_name,
+              (p.last_px / nullif(p.entry_px,0)) * (1 - p.cost_frac) AS mult
+       FROM sa_position p
+       JOIN sa_run r ON r.id = p.run_id
+       JOIN sa_strategy s ON s.id = r.strategy_id
+       WHERE p.closed_at IS NULL AND r.mode='paper'
+       ORDER BY p.opened_at DESC LIMIT 40`),
+    q(`SELECT p.mint, p.symbol, p.image, p.size_sol, p.entry_px, p.exit_px, p.exit_reason,
+              p.pnl_sol, p.opened_at, p.closed_at, s.name AS strategy_name,
+              extract(epoch FROM (p.closed_at - p.opened_at)) AS held_s
+       FROM sa_position p
+       JOIN sa_run r ON r.id = p.run_id
+       JOIN sa_strategy s ON s.id = r.strategy_id
+       WHERE p.closed_at IS NOT NULL AND r.mode='paper'
+       ORDER BY p.closed_at DESC LIMIT 40`),
+    q(`SELECT extract(epoch FROM p.closed_at) AS t,
+              sum(p.pnl_sol) OVER (ORDER BY p.closed_at) AS cum
+       FROM sa_position p JOIN sa_run r ON r.id = p.run_id
+       WHERE r.mode='paper' AND p.closed_at IS NOT NULL
+       ORDER BY p.closed_at ASC LIMIT 500`),
+  ]);
 
-    const recent = await q(`
-      SELECT p.mint, p.symbol, p.image, p.size_sol, p.entry_px, p.exit_px, p.exit_reason,
-             p.pnl_sol, p.opened_at, p.closed_at, s.name AS strategy_name,
-             extract(epoch FROM (p.closed_at - p.opened_at)) AS held_s
-      FROM sa_position p
-      JOIN sa_run r ON r.id = p.run_id
-      JOIN sa_strategy s ON s.id = r.strategy_id
-      WHERE p.closed_at IS NOT NULL AND r.mode='paper'
-      ORDER BY p.closed_at DESC LIMIT 40`);
+  const nClosed = Number(totals.n_closed);
+  return {
+    realisedPnl: Number(totals.realised_pnl),
+    unrealisedPnl: Number(totals.unrealised_pnl),
+    nClosed, nOpen: Number(totals.n_open),
+    winPct: nClosed ? (100 * Number(totals.n_wins)) / nClosed : 0,
+    volumeSol: Number(totals.volume_sol),
+    open, recent, curve,
+  };
+}
 
-    const t = totals as Record<string, string>;
-    const nClosed = Number(t.n_closed);
+app.get("/api/paper", async (_req, res, next) => {
+  try { res.json(await memo("paper", 4_000, paperState)); } catch (e) { next(e); }
+});
+
+/**
+ * Everything the dashboard needs, in ONE round trip.
+ *
+ * The UI used to fetch stats, features, model, agents, paper, picks and the
+ * leaderboard separately, each on its own page-switch — so every navigation
+ * showed "Loading…". One call, fetched once at boot and refreshed in the
+ * background, means switching pages is a local render with nothing to wait for.
+ *
+ * Every part is memoised independently, so a slow leaderboard cannot hold up the
+ * stat cards, and N open browsers cost the same as one.
+ */
+app.get("/api/bootstrap", async (_req, res, next) => {
+  try {
+    const [stats, model, agents, paper, board, picks, trades] = await Promise.all([
+      memo("stats", 15_000, async () => {
+        const [row] = await chQuery<Record<string, string>>(`
+          SELECT
+            (SELECT count() FROM episodes)           AS episodes,
+            (SELECT uniqExact(mint) FROM episodes)   AS coins,
+            (SELECT count() FROM coin_scores)        AS scored,
+            (SELECT toString(max(t0)) FROM episodes) AS newest
+          FORMAT JSON`);
+        return row ?? {};
+      }),
+      modelCard().catch(() => ({ trained: false })),
+      memo("agents", 5_000, () => agentRows()),
+      memo("paper", 4_000, () => paperState()),
+      memo("board:backtest", 20_000, () => leaderboard("backtest")),
+      memo("picks", 5_000, pickRows),
+      memo("trades", 3_000, async () => ({ trades: await liveTrades(60), rate: await scanRate() })),
+    ]);
+
     res.json({
-      realisedPnl: Number(t.realised_pnl),
-      unrealisedPnl: Number(t.unrealised_pnl),
-      nClosed, nOpen: Number(t.n_open),
-      winPct: nClosed ? (100 * Number(t.n_wins)) / nClosed : 0,
-      volumeSol: Number(t.volume_sol),
-      open, recent,
+      stats, model, agents, paper, board, picks,
+      trades: trades.trades, rate: trades.rate,
+      features: Object.entries(FEATURES).map(([name, def]) => ({
+        name, kind: def.kind, doc: def.doc,
+        values: (def as { values?: readonly string[] }).values ?? null,
+      })),
+      serverTime: new Date().toISOString(),
     });
   } catch (e) { next(e); }
 });
