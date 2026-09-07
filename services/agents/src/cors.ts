@@ -17,6 +17,11 @@ import type { Request, Response, NextFunction } from "express";
 
 const ALLOWED = new Set(
   [
+    // The site's own domains. pumplab.lol is where people actually arrive;
+    // api.polyx.trade is the API host, and is listed because the page is also
+    // served from there directly.
+    "https://pumplab.lol",
+    "https://www.pumplab.lol",
     "https://api.polyx.trade",
     "https://polyx.trade",
     "https://www.polyx.trade",
