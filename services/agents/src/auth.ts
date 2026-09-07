@@ -78,27 +78,34 @@ export function messageFor(nonce: string): string {
 
 // ── sessions ──────────────────────────────────────────────────────
 /**
- * Session signing key.
+ * Session signing key, resolved on FIRST USE rather than at import.
  *
  * There is deliberately no default. A fallback constant in a public repository
  * is not a fallback, it is a published signing key: anyone could mint a session
- * for any wallet and appear on the leaderboard as its owner. Development gets a
- * random key per process instead, which costs a re-login on restart and cannot
- * be known off the machine.
+ * for any wallet and appear on the leaderboard as its owner.
+ *
+ * But refusing at import time was wrong. It killed the whole process at boot,
+ * including deployments that only serve the static page and never issue a
+ * session at all - the front end reads from the API host, so a copy of this
+ * server behind a CDN has no business needing a signing key. Resolving lazily
+ * means such a deployment runs fine and only an actual attempt to sign or read
+ * a session fails, which is the operation that genuinely cannot proceed.
  */
-const SECRET = (() => {
+let cachedSecret: string | null = null;
+function secret(): string {
+  if (cachedSecret) return cachedSecret;
   const configured = process.env.AUTH_SECRET || process.env.INTERNAL_API_KEY;
-  if (configured) return configured;
+  if (configured) return (cachedSecret = configured);
   if (process.env.NODE_ENV === "production") {
-    throw new Error("AUTH_SECRET (or INTERNAL_API_KEY) must be set in production");
+    throw new Error("AUTH_SECRET (or INTERNAL_API_KEY) must be set to use wallet sessions");
   }
   console.warn("[auth] no AUTH_SECRET - using a random per-process key; sessions end on restart");
-  return randomBytes(32).toString("hex");
-})();
+  return (cachedSecret = randomBytes(32).toString("hex"));
+}
 const TTL_MS = 30 * 24 * 3600 * 1000;
 
 function sign(payload: string): string {
-  return createHmac("sha256", SECRET).update(payload).digest("base64url");
+  return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
 /** `<pubkey>.<expiry>.<hmac>` - stateless, so restarts do not sign everyone out. */
@@ -109,6 +116,9 @@ export function issueSession(pubkey: string): string {
 
 export function readSession(token: string | undefined): string | null {
   if (!token) return null;
+  // A server with no signing key cannot recognise any session, but a stray
+  // cookie on such a deployment should read as "signed out", not 500 the page.
+  try { secret(); } catch { return null; }
   const i = token.lastIndexOf(".");
   if (i < 0) return null;
   const payload = token.slice(0, i);
