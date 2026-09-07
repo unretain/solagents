@@ -1242,9 +1242,13 @@ async function loadCandles(mint) {
   }
 
   // Plotted as market cap, not raw price: a coin at 2.8e-8 SOL renders as a
-  // flat line of zeros on any axis a human can read. USD when the SOL rate is
-  // known, SOL otherwise - never $0.00.
-  const mult = SUPPLY * (solPrice || 1);
+  // flat line of zeros on any axis a human can read.
+  //
+  // Supply ONLY. The server already multiplied by the SOL rate (coin.ts toUsd),
+  // so applying it a second time here scaled every market cap by the price of
+  // SOL - a $10K coin drew as $2.3M. The unit conversion happens once, on the
+  // server, because that is the side that knows the rate.
+  const mult = SUPPLY;
   bars = c.map((k) => ({
     timestamp: +k.t, open: +k.o * mult, high: +k.h * mult,
     low: +k.l * mult, close: +k.c * mult, volume: +k.v,
@@ -1259,10 +1263,29 @@ async function loadCandles(mint) {
 document.querySelectorAll(".tf").forEach((b) => (b.onclick = () => {
   document.querySelectorAll(".tf").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
   tf = b.dataset.tf;
+  scheduleChartPoll();
   if (selMint) loadCandles(selMint);
 }));
 
-setInterval(() => { if (page === "terminal") { loadTerminal(); if (selMint) loadCandles(selMint); } }, 6000);
+/**
+ * The chart refreshes on its own clock, faster than the rest of the terminal.
+ *
+ * One 6-second timer drove both, which means a 1-second chart could only ever
+ * be six bars behind: it advanced in visible jumps and looked frozen between
+ * them. The candle poll now tracks the timeframe, while the coin list and the
+ * trade table stay on the slower timer they were sized for.
+ */
+const CHART_POLL = { "1s": 1500, "15s": 3000, "1m": 6000, "5m": 15000, "1h": 30000 };
+let chartTimer = null;
+function scheduleChartPoll() {
+  clearInterval(chartTimer);
+  chartTimer = setInterval(() => {
+    if (page === "terminal" && selMint) loadCandles(selMint);
+  }, CHART_POLL[tf] ?? 6000);
+}
+scheduleChartPoll();
+
+setInterval(() => { if (page === "terminal") loadTerminal(); }, 6000);
 
 // ── BUILD: presets + feature reference ────────────────────────────
 const PRESETS = [

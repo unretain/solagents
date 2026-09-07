@@ -419,7 +419,10 @@ app.get("/api/coin/:mint/candles", async (req, res, next) => {
     if (!MINT.test(mint)) return res.status(400).json({ error: "not a mint address" });
     const tf = String(req.query.tf || "1m");
     const sol = await solPrice();
-    res.json(await memo(`candles:${mint}:${tf}:${sol > 0}`, 3_000, () => candles(mint, tf, 300, sol)));
+    // Cached for less than the fastest client poll (1.5s at 1s), otherwise the
+    // chart asks four times a second for an answer that cannot change.
+    const ttl = tf.endsWith("s") ? 1_000 : 5_000;
+    res.json(await memo(`candles:${mint}:${tf}:${sol > 0}`, ttl, () => candles(mint, tf, 0, sol)));
   } catch (e) { next(e); }
 });
 
