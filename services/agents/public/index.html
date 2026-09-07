@@ -263,6 +263,17 @@
   .facts td{padding:11px 14px;font-size:13.5px;border-bottom:1px solid hsl(0 0% 100% / .04)}
   .facts td:last-child{text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
   .facts td:first-child{color:var(--dim)}
+
+/* Live scan panel on the home page. */
+.homechart { height: 190px; width: 100%; margin: 10px 0 12px; }
+.scanhead { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+.scanhead img, .scanhead .ph { width: 30px; height: 30px; border-radius: 8px;
+  object-fit: cover; background: rgba(255,255,255,.06); flex: none; }
+.scanhead .sym { font-weight: 650; letter-spacing: .2px; }
+.scanhead .mc { margin-left: auto; font-variant-numeric: tabular-nums; }
+.scanread { font-size: 12.5px; line-height: 1.55; color: var(--faint); min-height: 54px; }
+.scanread b { color: var(--text); font-weight: 600; }
+.scanread .verdict { display: inline-block; margin-top: 7px; }
 </style>
 </head>
 <body>
@@ -355,16 +366,13 @@
           <tr><td>Dev who launched 3+ before</td><td class="down">×0.44 per trade</td></tr>
         </tbody></table>
       </div></div>
-      <div class="glass"><h3>What we won't pretend</h3><div class="body">
-        <p style="margin:0 0 12px">No configuration tested here is profitable yet. The best still
-          loses roughly <b>17% per trade</b> once fees and slippage are charged.</p>
-        <p class="hint" style="margin:0 0 12px">Filters move it from ×0.03 to ×0.83 - entry selection
-          clearly works. The gap that remains is exits, and we would rather show you that than a
-          number that flatters the product.</p>
-        <p class="hint" style="margin:0">Every ambiguity in the backtester resolves <em>against</em>
-          the strategy: gap past a stop and you eat the gap; gap past a take-profit and you get the
-          take-profit, never the overshoot. A coin nobody traded again settles at zero, not at
-          break-even.</p>
+      <div class="glass" id="scanPanel"><h3>Live scan
+          <span class="tag" id="scanTag" style="float:right;font-weight:400"></span></h3>
+        <div class="body">
+          <div id="scanHead" class="scanhead"></div>
+          <div id="homeChart" class="homechart"></div>
+          <div id="scanRead" class="scanread"></div>
+        </div>
       </div></div>
     </div>
   </section>
@@ -593,7 +601,7 @@ function show(p) {
   if (p === "model") loadModel();
   if (p === "mine") loadMine();
   if (p === "board") loadBoard(mode);
-  if (p === "home") loadHome();
+  if (p === "home") { loadHome(); startScan(); } else { stopScan(); }
   if (p === "terminal") loadTerminal();
   if (p === "live") tickPicks();
   window.scrollTo({ top: 0, behavior: "instant" });
@@ -1286,6 +1294,108 @@ function scheduleChartPoll() {
 scheduleChartPoll();
 
 setInterval(() => { if (page === "terminal") loadTerminal(); }, 6000);
+
+/**
+ * Live scan panel on the home page.
+ *
+ * Rotates through the coins the agents are actually ranking right now and draws
+ * each one's chart as it updates. The read-out underneath is generated from the
+ * stored score and features - NOT a fresh model call. A panel that idles on the
+ * front page would otherwise bill for every rotation, and the numbers it quotes
+ * are already computed for every coin in the watchlist.
+ */
+let scanChart = null, scanList = [], scanIdx = 0, scanMint = null;
+let scanRotTimer = null, scanTickTimer = null;
+
+function initScanChart() {
+  if (scanChart || !window.klinecharts || !document.getElementById("homeChart")) return;
+  ensureYAxis();
+  scanChart = klinecharts.init("homeChart", {
+    formatter: {
+      formatDate: ({ timestamp }) => fmtClock(timestamp, "15s"),
+      formatBigNumber: (v) => usd(Number(v)),
+    },
+    styles: buildStyles(),
+  });
+  if (!scanChart) return;
+  scanChart.setDataLoader({
+    getBars: ({ type, callback }) => callback(type === "init" ? scanBars.slice() : [], false),
+    subscribeBar: () => {},
+    unsubscribeBar: () => {},
+  });
+  scanChart.overrideYAxis({ name: Y_AXIS, paneId: "candle_pane" });
+  scanChart.setSymbol({ ticker: "SCAN", pricePrecision: 2, volumePrecision: 0 });
+  scanChart.setPeriod(PERIODS["15s"]);
+}
+let scanBars = [];
+
+/** Plain-language read of a coin, from numbers we already hold. */
+function scanRead(c) {
+  const bits = [];
+  const sc = +c.score;
+  if (Number.isFinite(sc)) {
+    const band = sc >= 0.28 ? "top decile" : sc >= 0.18 ? "upper half" : "below the median";
+    bits.push(`Model puts it in the <b>${band}</b> at <b>${sc.toFixed(3)}</b>, against a base rate of 11.3%.`);
+  }
+  const tw = { real_profile: "links a <b>real X profile</b>, which graduates 9.5% of the time",
+               none: "has <b>no link</b>, which graduates 2.5% of the time",
+               someone_else: "links <b>someone else's tweet</b>, the worst class at 1.1%" }[c.twitterKind];
+  if (tw) bits.push(`It ${tw}.`);
+  const br = +c.buyRatio;
+  if (Number.isFinite(br)) {
+    bits.push(br >= 0.62 ? `Flow is <b>${(br * 100).toFixed(0)}% buys</b>, still one-sided.`
+      : br <= 0.45 ? `Flow has turned: only <b>${(br * 100).toFixed(0)}% buys</b>.`
+      : `Flow is balanced at <b>${(br * 100).toFixed(0)}% buys</b>.`);
+  }
+  if (+c.nTraders) bits.push(`<b>${c.nTraders}</b> traders, <b>${n(c.volSol, 1)}</b> SOL through it.`);
+  const v = c.llmVerdict;
+  if (v) bits.push(`<span class="verdict">Tweet read: <b>${esc(v)}</b>.</span>`);
+  return bits.join(" ");
+}
+
+async function scanDraw() {
+  const c = scanList[scanIdx];
+  if (!c) return;
+  scanMint = c.mint;
+  $("#scanTag").textContent = `${scanIdx + 1} of ${scanList.length} · rotating`;
+  $("#scanHead").innerHTML =
+    `${imgTag(c.image, "ph")}<span class="sym">${esc(c.symbol || c.mint.slice(0, 6))}</span>` +
+    `<span class="hint">${c.ageS != null ? Math.round(c.ageS) + "s old" : ""}</span>` +
+    `<span class="mc">${solPrice > 0 ? usd((+c.mcapSol || 0) * solPrice) : n(c.mcapSol, 1) + " SOL"}</span>`;
+  $("#scanRead").innerHTML = scanRead(c);
+  await scanTick();
+}
+
+/** Refresh just the candles for the coin currently on screen. */
+async function scanTick() {
+  if (!scanMint || !scanChart) return;
+  const c = await api(`/api/coin/${scanMint}/candles?tf=15s`).catch(() => []);
+  if (!c.length || !scanChart) return;
+  scanBars = c.map((k) => ({
+    timestamp: +k.t, open: +k.o * SUPPLY, high: +k.h * SUPPLY,
+    low: +k.l * SUPPLY, close: +k.c * SUPPLY, volume: +k.v,
+  }));
+  scanChart.resetData();
+}
+
+async function startScan() {
+  initScanChart();
+  if (!scanChart) return;
+  const wl = await api("/api/watchlist").catch(() => []);
+  if (!wl.length) { $("#scanRead").textContent = "Nothing in range right now."; return; }
+  scanList = wl.slice(0, 8);
+  scanIdx = 0;
+  await scanDraw();
+  clearInterval(scanRotTimer); clearInterval(scanTickTimer);
+  scanRotTimer = setInterval(() => {
+    if (page !== "home") return;
+    scanIdx = (scanIdx + 1) % scanList.length;
+    scanDraw();
+  }, 9000);
+  scanTickTimer = setInterval(() => { if (page === "home") scanTick(); }, 2500);
+}
+
+function stopScan() { clearInterval(scanRotTimer); clearInterval(scanTickTimer); }
 
 // ── BUILD: presets + feature reference ────────────────────────────
 const PRESETS = [

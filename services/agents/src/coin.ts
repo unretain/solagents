@@ -22,12 +22,9 @@ const INTERVALS: Record<string, number> = {
 };
 
 /**
- * How many bars each timeframe keeps.
- *
- * This was a flat 600 for every timeframe, which at 1s is exactly ten minutes:
- * any coin quiet for longer rendered a chart that ended in the past, with the
- * trading trimmed off the front by the same cap. Sized per timeframe so a
- * coin's whole life and its dead tail both fit.
+ * How many TRADED buckets each timeframe fetches. Quiet intervals are not rows,
+ * so this is a count of real activity rather than a span of time: 1800 at 1s is
+ * 1800 seconds that saw a trade, however long that took in wall clock.
  */
 const WINDOW_BARS: Record<string, number> = {
   "1s": 1800, "5s": 900, "15s": 600, "1m": 360, "5m": 300,
@@ -44,64 +41,18 @@ const WINDOW_BARS: Record<string, number> = {
  * second and open/close collapse to the same row, rendering every candle flat.
  */
 /**
- * Fill intervals that saw no trades.
+ * No gap filling.
  *
- * ClickHouse only returns buckets that HAVE trades, so a quiet stretch comes
- * back as a jump in timestamps. A chart that positions bars by time then draws
- * a hole across that stretch - which is exactly what the terminal showed on the
- * 1s view, where 300 traded buckets spanned 1,636 seconds.
+ * This used to carry the previous close across every quiet interval as a
+ * zero-volume bar, on the theory that a period with no trades is a period where
+ * the price did not change. That is true of the price and wrong for the chart:
+ * klinecharts lays bars out by INDEX, not by clock, so a bucket that never
+ * existed leaves no hole to patch. All the filling did was manufacture long
+ * runs of flat grey candles that look like data and are not - on a market where
+ * the median coin trades 8 times, they outnumbered the real bars.
  *
- * A period with no trades is not missing data: it is a period in which the
- * price did not change. So it carries the previous close on all four legs with
- * zero volume, which is the standard OHLCV convention.
- *
- * The window always ENDS AT NOW. A chart of a live market that stops ten
- * minutes in the past is wrong in the way that matters most, so the forward
- * fill is not budgeted - it is the thing being drawn.
- *
- * Capped per timeframe, because filling 1-second gaps across a coin that went
- * quiet for an hour would generate 3,600 bars nobody can read. Since the window
- * ends at now, trimming from the start is a sliding window rather than data
- * loss - and when the dead stretch is longer than the whole window, the fill
- * starts inside the window instead of walking every second up to it.
+ * A period nobody traded gets no candle.
  */
-function fillGaps(rows: Candle[], ivSec: number, maxBars: number): Candle[] {
-  if (!rows.length) return rows;
-  const step = ivSec * 1000;
-  const nowMs = Date.now();
-  const out: Candle[] = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const cur = rows[i];
-    if (i > 0) {
-      const prev = rows[i - 1];
-      // Bounded so a long mid-life gap cannot blow up before the trim runs.
-      for (let t = prev.t + step; t < cur.t && out.length < maxBars * 4; t += step) {
-        out.push({ t, o: prev.c, h: prev.c, l: prev.c, c: prev.c, v: 0 });
-      }
-    }
-    out.push(cur);
-  }
-
-  // Extend to the present. A coin that traded for 14 seconds and then went
-  // quiet for 14 minutes returned ONE bucket, which the chart drew as a single
-  // enormous candle filling the pane. Its price did not stop existing when the
-  // trading stopped, so the silence is drawn as flat bars.
-  const last = out[out.length - 1];
-  const missing = Math.floor((nowMs - last.t) / step);
-  if (missing > 0) {
-    // Walking every second of a multi-hour silence would be hundreds of
-    // thousands of iterations for bars the trim discards anyway. When the
-    // silence alone exceeds the window, begin where the window begins.
-    const skip = Math.max(0, missing - maxBars);
-    for (let k = skip + 1; k <= missing; k++) {
-      const t = last.t + k * step;
-      out.push({ t, o: last.c, h: last.c, l: last.c, c: last.c, v: 0 });
-    }
-  }
-  return out.length > maxBars ? out.slice(out.length - maxBars) : out;
-}
-
 
 /**
  * Candles, already in USD.
@@ -135,7 +86,7 @@ export async function candles(
       FROM trades
       WHERE mint = ${m} AND price_sol > 0
       GROUP BY t ORDER BY t DESC LIMIT ${rowLimit}
-      FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv, WINDOW_BARS[tf] ?? 300));
+      FORMAT JSON`).then((r) => toUsd(r.reverse()));
   }
 
   return chQuery<Candle>(`
@@ -148,7 +99,7 @@ export async function candles(
     FROM candles_1m
     WHERE mint = ${m}
     GROUP BY t ORDER BY t DESC LIMIT ${rowLimit}
-    FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv, WINDOW_BARS[tf] ?? 300));
+    FORMAT JSON`).then((r) => toUsd(r.reverse()));
 }
 
 export async function coinDetail(mint: string): Promise<Record<string, unknown>> {
