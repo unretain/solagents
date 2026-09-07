@@ -10,6 +10,7 @@ import { strategySchema, explainInvalid, type Strategy } from "./strategy/schema
 import { livePicks, liveTape, publishedPicks, liveTrades, scanRate } from "./live.js";
 import { startPaperEngine } from "./paper.js";
 import { attach } from "./stream.js";
+import { coinDetail, candles, watchlist } from "./coin.js";
 import { memo, invalidate } from "./cache.js";
 import { TP_MULT, SL_MULT } from "./model/spec.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
@@ -319,6 +320,32 @@ app.get("/api/agents", async (_req, res, next) => {
   try { res.json(await memo("agents", 5_000, agentRows)); } catch (e) { next(e); }
 });
 
+// ─────────────────────────── coin terminal ───────────────────────
+
+const MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/; // base58, no 0/O/I/l
+
+app.get("/api/coin/:mint", async (req, res, next) => {
+  try {
+    const mint = String(req.params.mint);
+    if (!MINT.test(mint)) return res.status(400).json({ error: "not a mint address" });
+    res.json(await memo(`coin:${mint}`, 4_000, () => coinDetail(mint)));
+  } catch (e) { next(e); }
+});
+
+app.get("/api/coin/:mint/candles", async (req, res, next) => {
+  try {
+    const mint = String(req.params.mint);
+    if (!MINT.test(mint)) return res.status(400).json({ error: "not a mint address" });
+    const tf = String(req.query.tf || "1m");
+    res.json(await memo(`candles:${mint}:${tf}`, 3_000, () => candles(mint, tf)));
+  } catch (e) { next(e); }
+});
+
+/** What the agents are watching — ranked by the model, not by volume. */
+app.get("/api/watchlist", async (_req, res, next) => {
+  try { res.json(await memo("watchlist", 5_000, () => watchlist())); } catch (e) { next(e); }
+});
+
 /** Start a paper run for a saved strategy. */
 app.post("/api/runs", async (req, res, next) => {
   try {
@@ -426,7 +453,7 @@ app.get("/api/paper", async (_req, res, next) => {
  */
 app.get("/api/bootstrap", async (_req, res, next) => {
   try {
-    const [stats, model, agents, paper, board, picks, trades] = await Promise.all([
+    const [stats, model, agents, paper, board, picks, trades, watching] = await Promise.all([
       memo("stats", 15_000, async () => {
         const [row] = await chQuery<Record<string, string>>(`
           SELECT
@@ -443,10 +470,11 @@ app.get("/api/bootstrap", async (_req, res, next) => {
       memo("board:backtest", 20_000, () => leaderboard("backtest")),
       memo("picks", 5_000, pickRows),
       memo("trades", 3_000, async () => ({ trades: await liveTrades(60), rate: await scanRate() })),
+      memo("watchlist", 5_000, () => watchlist()),
     ]);
 
     res.json({
-      stats, model, agents, paper, board, picks,
+      stats, model, agents, paper, board, picks, watching,
       trades: trades.trades, rate: trades.rate,
       features: Object.entries(FEATURES).map(([name, def]) => ({
         name, kind: def.kind, doc: def.doc,
