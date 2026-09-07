@@ -34,7 +34,7 @@ const REQUIRED = [
   // build
   "filterRow", "read", "write", "renderBT", "paintLlm", "initCA", "loadWallet", "openCode", "closeCode", "startScan", "stopScan", "scanRead", "scanTick", "scanDraw", "initScanChart", "renderPresets", "renderFeatureTable",
   // pages
-  "loadModel", "loadMine", "loadBoard",
+  "loadModel", "loadMine", "loadBoard", "rankIcon",
   // wallet
   "provider", "paintWallet", "connectWallet", "disconnectWallet", "b58encode", "solTick",
 ];

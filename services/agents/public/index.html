@@ -297,6 +297,17 @@
 .walletrow { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
 .walletbal { font-size: 21px; font-weight: 650; letter-spacing: -.02em;
   font-variant-numeric: tabular-nums; }
+
+/* Leaderboard rank markers. Tinted by position, drawn from our own tokens so
+   the top three read as a set rather than as three unrelated pictures. */
+.rank { vertical-align: -2px; }
+.rank .rib { fill: currentColor; opacity: .55; }
+.rank .disc { fill: currentColor; }
+.rank .ring { fill: none; stroke: hsl(0 0% 0% / .45); stroke-width: 1.1; }
+.rank-g { color: #e8bf5a; }
+.rank-s { color: #c2c9cf; }
+.rank-b { color: #c08552; }
+.rank-n { color: var(--faint); font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -1108,6 +1119,28 @@ async function loadMine() {
 
 // ── leaderboard ──────────────────────────────────────────────────
 let mode = "backtest";
+/**
+ * Rank marker for the leaderboard.
+ *
+ * Was three medal emoji. Emoji render in whatever face the operating system
+ * supplies, so the same table looked different on every machine and none of
+ * them matched the rest of the page - a colour cartoon in a monospace numeric
+ * column. This is an inline SVG instead: one shape, drawn in our own palette,
+ * identical everywhere, and it scales with the text rather than with a font we
+ * do not control.
+ */
+function rankIcon(i) {
+  if (i > 2) return `<span class="rank-n">${i + 1}</span>`;
+  const tone = ["g", "s", "b"][i];
+  return `<svg class="rank rank-${tone}" viewBox="0 0 20 20" width="15" height="15"
+    aria-label="rank ${i + 1}" role="img">
+    <path d="M6.2 1.5 L8.6 7 L5.4 8.6 Z" class="rib"/>
+    <path d="M13.8 1.5 L11.4 7 L14.6 8.6 Z" class="rib"/>
+    <circle cx="10" cy="12.6" r="6.1" class="disc"/>
+    <circle cx="10" cy="12.6" r="4.3" class="ring"/>
+  </svg>`;
+}
+
 async function loadBoard(m) {
   mode = m;
   $("#boardBody").innerHTML = `<div class="empty">Loading…</div>`;
@@ -1123,7 +1156,7 @@ async function loadBoard(m) {
       <thead><tr><th>#</th><th>Agent</th><th>Trades</th><th>Win</th>
         <th>${m==="backtest"?"Per-trade":"Status"}</th><th>PnL</th><th>Volume</th></tr></thead>
       <tbody>${rows.map((r,i)=>`<tr>
-        <td>${["🥇","🥈","🥉"][i] || i+1}</td>
+        <td>${rankIcon(i)}</td>
         <td title="${esc(r.thesis||"")}">${esc(r.name)}</td>
         <td class="num">${(+r.n_trades).toLocaleString()}</td>
         <td class="num">${n(r.win_pct,1)}%</td>
