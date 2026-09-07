@@ -82,18 +82,19 @@ async function openPositions(run: RunRow): Promise<number> {
   // tight (120s past the horizon) because a paper run must enter at roughly the
   // moment the strategy fires — entering a 30-minute-old match would record a
   // fill the backtest would never have taken.
+  // live_snapshot, not live_episodes: the view behind it scans `trades` four
+  // times per evaluation (~100M rows), and running that once per run every 5s
+  // timed out every tick. The snapshot carries `image`, so the tokens join that
+  // used to sit on top of this is gone too.
   const picks = await chQuery<{
     mint: string; symbol: string; px: number; real_sol: number; image: string;
   }>(`
-    SELECT l.mint AS mint, l.symbol AS symbol, l.px_at_h AS px,
-           l.real_sol_at_h AS real_sol, ifNull(t.image, '') AS image
-    FROM live_episodes AS l
-    LEFT JOIN (SELECT mint, argMax(image, ingested_at) AS image FROM tokens GROUP BY mint) AS t
-      ON l.mint = t.mint
+    SELECT mint, symbol, px_at_h AS px, real_sol_at_h AS real_sol, image
+    FROM live_snapshot
     WHERE ${toSql(s)}
-      AND l.age_now_s <= ${s.decide_at_s + 120}
-      AND l.px_at_h > 0
-    ORDER BY l.t0 DESC
+      AND age_now_s <= ${s.decide_at_s + 120}
+      AND px_at_h > 0
+    ORDER BY t0 DESC
     LIMIT ${room * 4}
     FORMAT JSON`);
 

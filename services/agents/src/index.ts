@@ -245,7 +245,7 @@ app.get("/api/model", async (_req, res, next) => {
       SELECT mint, symbol, age_now_s AS ageS, n_traders AS nTraders,
              round(vol_sol,2) AS volSol, twitter_kind AS twitterKind,
              round(model_score,3) AS score
-      FROM live_episodes
+      FROM live_snapshot
       WHERE horizon_s = ${Number(card.horizon_s) || 60} AND n_trades >= 3
       ORDER BY model_score DESC LIMIT 10 FORMAT JSON`);
 

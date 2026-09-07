@@ -4,215 +4,217 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Poump Lab</title>
+<meta name="description" content="Train trading agents on live Solana data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://api.polyx.trade" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* Palette lifted from the Polyx house tokens (apps/web/src/app/globals.css):
+     --primary 142 76% 36%, --background 0 0% 3.9%, --card 0 0% 7%,
+     --border 0 0% 14.9%, Inter + DM Mono. Same brand, glass surface. */
   :root{
-    --bg:#07090b;
-    --glass:rgba(255,255,255,.045);
-    --glass-2:rgba(255,255,255,.028);
-    --stroke:rgba(255,255,255,.09);
-    --stroke-2:rgba(255,255,255,.055);
-    --ink:#f4f7f6;
-    --dim:rgba(244,247,246,.60);
-    --faint:rgba(244,247,246,.36);
-    --green:#32d74b;
-    --green-soft:rgba(50,215,75,.13);
-    --red:#ff453a;
-    --red-soft:rgba(255,69,58,.12);
-    --r:18px;
-    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Inter,system-ui,sans-serif;
+    --bg:hsl(0 0% 3.9%);
+    --card:hsl(0 0% 7%);
+    --line:hsl(0 0% 14.9%);
+    --ink:hsl(0 0% 98%);
+    --dim:hsl(0 0% 63.9%);
+    --faint:hsl(0 0% 45%);
+    --green:hsl(142 76% 36%);      /* brand */
+    --green-lit:hsl(142 69% 52%);  /* legible on near-black */
+    --green-dim:hsl(142 76% 36% / .14);
+    --red:hsl(0 72% 56%);
+    --red-dim:hsl(0 72% 56% / .13);
+    --glass:hsl(0 0% 100% / .038);
+    --glass-2:hsl(0 0% 100% / .022);
+    --stroke:hsl(0 0% 100% / .075);
+    --r:14px;
+    --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --mono:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   }
   *{box-sizing:border-box}
-  html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
-  body{
-    margin:0;color:var(--ink);font:15px/1.55 var(--sans);letter-spacing:-.011em;
-    background:var(--bg);min-height:100vh;
-  }
-  /* ambient light — the thing that makes glass read as glass */
-  body::before{
-    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans);
+    letter-spacing:-.011em;min-height:100vh}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:
-      radial-gradient(58vw 46vw at 12% -6%, rgba(50,215,75,.16), transparent 60%),
-      radial-gradient(46vw 40vw at 96% 4%, rgba(255,255,255,.07), transparent 62%),
-      radial-gradient(60vw 52vw at 72% 108%, rgba(50,215,75,.09), transparent 64%);
-  }
+      radial-gradient(62vw 48vw at 8% -8%, hsl(142 76% 36% / .17), transparent 62%),
+      radial-gradient(44vw 38vw at 98% 2%, hsl(0 0% 100% / .05), transparent 60%),
+      radial-gradient(58vw 50vw at 78% 106%, hsl(142 76% 36% / .10), transparent 64%)}
   a{color:inherit;text-decoration:none}
-  ::selection{background:var(--green-soft)}
-  ::-webkit-scrollbar{width:9px;height:9px}
-  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:9px}
+  ::selection{background:var(--green-dim)}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-thumb{background:hsl(0 0% 40% / .5);border-radius:3px}
   ::-webkit-scrollbar-track{background:transparent}
 
-  /* ── nav ─────────────────────────────────────────── */
-  .nav{
-    position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:4px;
-    padding:11px 22px;
-    background:rgba(7,9,11,.62);
-    backdrop-filter:blur(26px) saturate(180%);
-    -webkit-backdrop-filter:blur(26px) saturate(180%);
-    border-bottom:1px solid var(--stroke-2);
-  }
-  .brand{display:flex;align-items:center;gap:9px;margin-right:22px;font-weight:600;
-    font-size:16px;letter-spacing:-.03em}
-  .mark{width:22px;height:22px;border-radius:7px;flex:0 0 auto;
-    background:linear-gradient(150deg,var(--green),#0f9b32);
-    box-shadow:0 0 16px rgba(50,215,75,.45);position:relative}
-  .mark::after{content:"";position:absolute;inset:5px 5px auto 5px;height:2px;
-    border-radius:2px;background:rgba(255,255,255,.85)}
-  .navlink{padding:7px 14px;border-radius:11px;color:var(--dim);font-size:13.5px;
-    font-weight:500;cursor:pointer;transition:.18s;border:1px solid transparent}
+  .nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:3px;
+    padding:11px 22px;background:hsl(0 0% 3.9% / .72);
+    backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
+    border-bottom:1px solid hsl(0 0% 100% / .055)}
+  .brand{display:flex;align-items:center;gap:9px;margin-right:20px;font-weight:600;
+    font-size:15.5px;letter-spacing:-.03em;cursor:pointer}
+  .mark{width:21px;height:21px;border-radius:6px;flex:0 0 auto;position:relative;
+    background:linear-gradient(155deg,var(--green-lit),var(--green));
+    box-shadow:0 0 15px hsl(142 76% 36% / .5)}
+  .mark::after{content:"";position:absolute;inset:auto 5px 5px 5px;height:2px;border-radius:2px;
+    background:hsl(0 0% 100% / .9)}
+  .navlink{padding:7px 13px;border-radius:9px;color:var(--dim);font-size:13.5px;font-weight:500;
+    cursor:pointer;transition:.16s;border:1px solid transparent;white-space:nowrap}
   .navlink:hover{color:var(--ink);background:var(--glass-2)}
-  .navlink[aria-current=page]{color:var(--ink);background:var(--glass);
-    border-color:var(--stroke);box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
-  .navstats{margin-left:auto;display:flex;gap:20px;align-items:center;
-    font:11.5px/1 var(--mono);color:var(--faint)}
-  .navstats b{color:var(--dim);font-weight:600}
-  @media(max-width:900px){.navstats{display:none}.navlink{padding:7px 10px;font-size:13px}}
+  .navlink[aria-current=page]{color:var(--ink);background:var(--glass);border-color:var(--stroke)}
+  .navstats{margin-left:auto;display:flex;gap:18px;align-items:center;
+    font:400 11.5px/1 var(--mono);color:var(--faint)}
+  .navstats b{color:var(--dim);font-weight:500}
+  @media(max-width:1000px){.navstats{display:none}.navlink{padding:7px 9px;font-size:13px}}
 
-  .wrap{max-width:1400px;margin:0 auto;padding:30px 22px 80px}
-  .page{display:none;animation:fade .34s cubic-bezier(.22,.8,.3,1)}
+  .wrap{max-width:1360px;margin:0 auto;padding:34px 22px 90px}
+  .page{display:none;animation:fade .3s cubic-bezier(.22,.8,.3,1)}
   .page.on{display:block}
-  @keyframes fade{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-  h1{margin:0 0 5px;font-size:30px;font-weight:600;letter-spacing:-.035em}
-  .sub{margin:0 0 24px;color:var(--faint);font-size:14px;max-width:74ch}
+  h1{margin:0 0 6px;font-size:32px;font-weight:600;letter-spacing:-.038em;line-height:1.15}
+  .sub{margin:0 0 26px;color:var(--faint);font-size:14.5px;max-width:76ch}
 
-  /* ── glass ───────────────────────────────────────── */
-  .glass{
-    background:var(--glass);
-    border:1px solid var(--stroke);
-    border-radius:var(--r);
-    backdrop-filter:blur(22px) saturate(170%);
-    -webkit-backdrop-filter:blur(22px) saturate(170%);
-    box-shadow:0 1px 0 rgba(255,255,255,.055) inset, 0 16px 44px rgba(0,0,0,.34);
-    overflow:hidden;
-  }
-  .glass>h3{margin:0;padding:13px 18px;font-size:11.5px;font-weight:600;color:var(--faint);
-    letter-spacing:.09em;text-transform:uppercase;border-bottom:1px solid var(--stroke-2);
+  .glass{background:var(--glass);border:1px solid var(--stroke);border-radius:var(--r);
+    backdrop-filter:blur(20px) saturate(165%);-webkit-backdrop-filter:blur(20px) saturate(165%);
+    box-shadow:0 1px 0 hsl(0 0% 100% / .05) inset, 0 14px 40px hsl(0 0% 0% / .36);overflow:hidden}
+  .glass>h3{margin:0;padding:12px 18px;font-size:11px;font-weight:600;color:var(--faint);
+    letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid hsl(0 0% 100% / .05);
     display:flex;align-items:center;gap:9px;background:var(--glass-2)}
   .glass .body{padding:18px}
-  .grid{display:grid;gap:18px}
+  .grid{display:grid;gap:16px}
   .g2{grid-template-columns:1fr 1fr}
-  .gside{grid-template-columns:minmax(340px,430px) 1fr}
-  @media(max-width:960px){.g2,.gside{grid-template-columns:1fr}}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .gside{grid-template-columns:minmax(340px,420px) 1fr}
+  @media(max-width:980px){.g2,.g3,.gside{grid-template-columns:1fr}}
 
-  /* ── stats ───────────────────────────────────────── */
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:20px}
-  .stat{padding:16px 18px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:13px;margin-bottom:20px}
+  .stat{padding:15px 17px}
   .stat .k{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;font-weight:600}
-  .stat .v{font:600 27px/1.15 var(--sans);letter-spacing:-.03em;margin-top:7px;
+  .stat .v{font:600 26px/1.15 var(--sans);letter-spacing:-.035em;margin-top:6px;
     font-variant-numeric:tabular-nums}
   .stat .s{color:var(--faint);font-size:11.5px;margin-top:3px}
-  .up{color:var(--green)} .down{color:var(--red)}
+  .up{color:var(--green-lit)} .down{color:var(--red)}
 
-  /* ── tables ──────────────────────────────────────── */
   table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
   th,td{padding:9px 14px;text-align:right;white-space:nowrap}
-  th{color:var(--faint);font-weight:600;font-size:10px;text-transform:uppercase;
-    letter-spacing:.1em;position:sticky;top:0;z-index:1;
-    background:rgba(11,14,17,.88);backdrop-filter:blur(14px);
-    border-bottom:1px solid var(--stroke-2)}
-  td{border-bottom:1px solid rgba(255,255,255,.032)}
+  th{color:var(--faint);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.1em;
+    position:sticky;top:0;z-index:1;background:hsl(0 0% 6% / .93);backdrop-filter:blur(12px);
+    border-bottom:1px solid hsl(0 0% 100% / .06)}
+  td{border-bottom:1px solid hsl(0 0% 100% / .03)}
   th:first-child,td:first-child{text-align:left}
-  tbody tr{transition:background .16s}
-  tbody tr:hover{background:rgba(255,255,255,.03)}
+  tbody tr{transition:background .15s}
+  tbody tr:hover{background:hsl(0 0% 100% / .025)}
   .scroll{overflow:auto;overscroll-behavior:contain}
   .num{font-family:var(--mono);font-size:12px}
 
   .coin{display:flex;align-items:center;gap:9px;min-width:0}
   .coin img,.coin .ph{width:22px;height:22px;border-radius:50%;flex:0 0 auto;object-fit:cover;
-    background:rgba(255,255,255,.07);border:1px solid var(--stroke-2)}
+    background:hsl(0 0% 100% / .06);border:1px solid hsl(0 0% 100% / .07)}
   .coin span{overflow:hidden;text-overflow:ellipsis}
 
   .tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:600;
-    background:rgba(255,255,255,.06);color:var(--dim);border:1px solid var(--stroke-2)}
-  .tag.profile{background:var(--green-soft);color:var(--green);border-color:rgba(50,215,75,.28)}
-  .tag.buy{background:var(--green-soft);color:var(--green);border-color:rgba(50,215,75,.28)}
-  .tag.sell{background:var(--red-soft);color:var(--red);border-color:rgba(255,69,58,.26)}
+    background:hsl(0 0% 100% / .055);color:var(--dim);border:1px solid hsl(0 0% 100% / .07)}
+  .tag.profile,.tag.buy{background:var(--green-dim);color:var(--green-lit);border-color:hsl(142 76% 36% / .35)}
+  .tag.sell{background:var(--red-dim);color:var(--red);border-color:hsl(0 72% 56% / .3)}
 
-  /* one row sliding in, not ten appearing */
-  @keyframes slidein{
-    from{opacity:0;transform:translateY(-9px);background:var(--green-soft)}
-    to{opacity:1;transform:none;background:transparent}
-  }
+  @keyframes slidein{from{opacity:0;transform:translateY(-8px);background:var(--green-dim)}
+    to{opacity:1;transform:none;background:transparent}}
   tr.new{animation:slidein .5s cubic-bezier(.22,.8,.3,1)}
-
   .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:0 0 auto}
-  .dot.on{background:var(--green);box-shadow:0 0 0 0 rgba(50,215,75,.55);animation:pulse 2.2s infinite}
-  @keyframes pulse{70%{box-shadow:0 0 0 7px rgba(50,215,75,0)}100%{box-shadow:0 0 0 0 rgba(50,215,75,0)}}
+  .dot.on{background:var(--green-lit);animation:pulse 2.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 hsl(142 69% 52% / .55)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
 
-  /* ── controls ────────────────────────────────────── */
-  textarea,input,select{
-    width:100%;color:var(--ink);font:14px/1.55 var(--sans);
-    background:rgba(255,255,255,.045);border:1px solid var(--stroke);
-    border-radius:13px;padding:11px 14px;transition:.18s;
-  }
-  input,select{font:12.5px/1.4 var(--mono);padding:9px 12px;border-radius:11px}
-  textarea{min-height:132px;resize:vertical}
+  textarea,input,select{width:100%;color:var(--ink);font:14px/1.55 var(--sans);
+    background:hsl(0 0% 100% / .04);border:1px solid hsl(0 0% 100% / .085);
+    border-radius:11px;padding:11px 13px;transition:.16s}
+  input,select{font:400 12.5px/1.4 var(--mono);padding:9px 12px;border-radius:9px}
+  textarea{min-height:128px;resize:vertical}
   textarea::placeholder{color:var(--faint)}
   :focus{outline:none}
-  textarea:focus,input:focus,select:focus{border-color:rgba(50,215,75,.5);
-    box-shadow:0 0 0 4px rgba(50,215,75,.11)}
+  textarea:focus,input:focus,select:focus{border-color:hsl(142 76% 36% / .6);
+    box-shadow:0 0 0 3px hsl(142 76% 36% / .16)}
   select{appearance:none;cursor:pointer;
     background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);
-    background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;
-    background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:30px}
-  option{background:#0d1013;color:var(--ink)}
+    background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;background-size:5px 5px;
+    background-repeat:no-repeat;padding-right:28px}
+  option{background:hsl(0 0% 8%);color:var(--ink)}
   label.f{display:block;color:var(--faint);font-size:11px;margin-bottom:5px;font-weight:500}
 
-  button{
-    background:linear-gradient(180deg,var(--green),#22b93c);color:#04120a;border:0;
-    border-radius:12px;padding:10px 19px;font:600 13.5px var(--sans);letter-spacing:-.01em;
-    cursor:pointer;transition:.18s;box-shadow:0 5px 18px rgba(50,215,75,.26)
-  }
-  button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 24px rgba(50,215,75,.34)}
-  button:active:not(:disabled){transform:translateY(0)}
+  button{background:var(--green);color:#fff;border:0;border-radius:10px;padding:10px 18px;
+    font:600 13.5px var(--sans);letter-spacing:-.01em;cursor:pointer;transition:.16s;
+    box-shadow:0 4px 16px hsl(142 76% 36% / .3)}
+  button:hover:not(:disabled){background:hsl(142 76% 41%);transform:translateY(-1px)}
+  button:active:not(:disabled){transform:none}
   button:disabled{opacity:.4;cursor:default;box-shadow:none}
   button.ghost{background:var(--glass);color:var(--dim);border:1px solid var(--stroke);box-shadow:none}
-  button.ghost:hover:not(:disabled){color:var(--ink);background:rgba(255,255,255,.075);transform:none}
-  button.sm{padding:5px 12px;font-size:12px;border-radius:9px}
+  button.ghost:hover:not(:disabled){color:var(--ink);background:hsl(0 0% 100% / .07);transform:none}
+  button.sm{padding:5px 12px;font-size:12px;border-radius:8px}
+  button.big{padding:13px 26px;font-size:15px;border-radius:12px}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .row+.row{margin-top:11px}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:11px}
 
-  .filter{display:grid;grid-template-columns:1fr 70px 1fr auto;gap:7px;align-items:center;
-    padding:9px;border-radius:13px;background:var(--glass-2);border:1px solid var(--stroke-2);
-    margin-bottom:8px}
-  .filter button{background:transparent;color:var(--faint);border:0;padding:2px 6px;
-    font-size:17px;box-shadow:none;line-height:1}
-  .filter button:hover{color:var(--red);transform:none}
+  .filter{display:grid;grid-template-columns:1fr 68px 1fr auto;gap:7px;align-items:center;
+    padding:9px;border-radius:11px;background:var(--glass-2);
+    border:1px solid hsl(0 0% 100% / .05);margin-bottom:8px}
+  .filter button{background:transparent;color:var(--faint);border:0;padding:2px 6px;font-size:17px;
+    box-shadow:none;line-height:1}
+  .filter button:hover{color:var(--red);background:transparent;transform:none}
   .doc{grid-column:1/-1;color:var(--faint);font-size:11px;line-height:1.45;padding:0 3px}
 
-  .note{padding:11px 14px;border-radius:13px;font-size:13px;margin-top:12px;
-    background:rgba(255,255,255,.05);border:1px solid var(--stroke);color:var(--dim)}
-  .note.ok{background:var(--green-soft);border-color:rgba(50,215,75,.26);color:#b9f0c4}
-  .note.err{background:var(--red-soft);border-color:rgba(255,69,58,.26);color:#ffc9c5}
+  .note{padding:11px 14px;border-radius:11px;font-size:13px;margin-top:12px;
+    background:hsl(0 0% 100% / .045);border:1px solid var(--stroke);color:var(--dim)}
+  .note.ok{background:var(--green-dim);border-color:hsl(142 76% 36% / .32);color:hsl(142 60% 76%)}
+  .note.err{background:var(--red-dim);border-color:hsl(0 72% 56% / .3);color:hsl(0 80% 84%)}
   .empty{color:var(--faint);padding:44px 18px;text-align:center;font-size:13.5px}
-  .hint{color:var(--faint);font-size:12.5px;line-height:1.5}
-  pre{font:11.5px/1.55 var(--mono);color:var(--dim);background:rgba(0,0,0,.28);
-    padding:12px;border-radius:11px;overflow:auto;margin:8px 0 0;border:1px solid var(--stroke-2)}
+  .hint{color:var(--faint);font-size:12.5px;line-height:1.55}
+  pre{font:400 11.5px/1.55 var(--mono);color:var(--dim);background:hsl(0 0% 0% / .3);padding:12px;
+    border-radius:9px;overflow:auto;margin:8px 0 0;border:1px solid hsl(0 0% 100% / .05)}
   details summary{cursor:pointer;color:var(--faint);font-size:12.5px;padding:7px 0;user-select:none}
-  .spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(4,18,10,.3);
-    border-top-color:#04120a;border-radius:50%;animation:sp .65s linear infinite;
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid hsl(0 0% 100% / .3);
+    border-top-color:#fff;border-radius:50%;animation:sp .65s linear infinite;
     vertical-align:-2px;margin-right:7px}
   @keyframes sp{to{transform:rotate(360deg)}}
-  .bar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;min-width:54px}
+  .bar{height:5px;background:hsl(0 0% 100% / .07);border-radius:99px;overflow:hidden;min-width:54px}
   .bar i{display:block;height:100%;border-radius:99px}
-  .tabs{display:inline-flex;gap:3px;padding:4px;margin-bottom:16px;border-radius:14px;
+  .tabs{display:inline-flex;gap:3px;padding:4px;margin-bottom:16px;border-radius:12px;
     background:var(--glass);border:1px solid var(--stroke)}
-  .tab{background:transparent;color:var(--dim);border:0;border-radius:10px;padding:6px 15px;
+  .tab{background:transparent;color:var(--dim);border:0;border-radius:9px;padding:6px 15px;
     font:500 12.5px var(--sans);cursor:pointer;box-shadow:none}
-  .tab:hover:not([aria-selected=true]){color:var(--ink);transform:none;box-shadow:none}
-  .tab[aria-selected=true]{background:rgba(255,255,255,.1);color:var(--ink);box-shadow:none}
-  .steplbl{font-size:11px;color:var(--green);font-weight:700;letter-spacing:.1em;
-    text-transform:uppercase;margin-bottom:9px}
+  .tab:hover:not([aria-selected=true]){color:var(--ink);background:transparent;transform:none}
+  .tab[aria-selected=true]{background:hsl(0 0% 100% / .09);color:var(--ink)}
+  .steplbl{font-size:10.5px;color:var(--green-lit);font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;margin-bottom:10px}
+
+  /* ── overview ─────────────────────────────────────── */
+  .hero{padding:56px 0 40px;max-width:820px}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:5px 13px;border-radius:99px;
+    background:var(--green-dim);border:1px solid hsl(142 76% 36% / .3);color:var(--green-lit);
+    font-size:12px;font-weight:600;margin-bottom:22px}
+  .hero h2{margin:0 0 18px;font-size:clamp(38px,5.4vw,62px);font-weight:600;line-height:1.03;
+    letter-spacing:-.045em}
+  .hero h2 em{font-style:normal;color:var(--green-lit)}
+  .hero p{margin:0 0 30px;font-size:18px;line-height:1.6;color:var(--dim);max-width:64ch}
+  .step{padding:22px}
+  .stepn{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;
+    background:var(--green-dim);border:1px solid hsl(142 76% 36% / .32);color:var(--green-lit);
+    font:600 12.5px var(--mono);margin-bottom:14px}
+  .step h4{margin:0 0 7px;font-size:16px;font-weight:600;letter-spacing:-.022em}
+  .step p{margin:0;font-size:13.5px;color:var(--faint);line-height:1.6}
+  .step code{font:400 12px var(--mono);color:var(--green-lit);background:var(--green-dim);
+    padding:1px 5px;border-radius:4px}
+  .facts td{padding:11px 14px;font-size:13.5px;border-bottom:1px solid hsl(0 0% 100% / .04)}
+  .facts td:last-child{text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+  .facts td:first-child{color:var(--dim)}
 </style>
 </head>
 <body>
 
 <nav class="nav">
-  <div class="brand"><div class="mark"></div>Poump Lab</div>
-  <div class="navlink" data-page="live" aria-current="page">Live</div>
+  <div class="brand" data-page="home"><div class="mark"></div>Poump Lab</div>
+  <div class="navlink" data-page="home" aria-current="page">Overview</div>
+  <div class="navlink" data-page="live">Live</div>
   <div class="navlink" data-page="build">Build</div>
   <div class="navlink" data-page="model">Model</div>
   <div class="navlink" data-page="mine">My agents</div>
@@ -222,7 +224,96 @@
 
 <div class="wrap">
 
-  <section class="page on" id="page-live">
+  <!-- ══════════ OVERVIEW ══════════ -->
+  <section class="page on" id="page-home">
+    <div class="hero">
+      <div class="eyebrow"><span class="dot on"></span> Reading the chain from our own validator</div>
+      <h2>Describe a trading strategy. <em>Watch it trade.</em></h2>
+      <p>Poump Lab turns a sentence of English into a trading agent, tests it against every
+        Solana memecoin launch we have on record, then runs it live on paper money and ranks it
+        against everyone else's.</p>
+      <div class="row">
+        <button class="big" data-go="build">Build an agent</button>
+        <button class="big ghost" data-go="live">Watch it live</button>
+      </div>
+    </div>
+
+    <div class="stats" id="homeStats"></div>
+
+    <h3 style="font-size:19px;font-weight:600;letter-spacing:-.03em;margin:34px 0 16px">How it works</h3>
+    <div class="grid g3">
+      <div class="glass step">
+        <div class="stepn">1</div>
+        <h4>We see every trade first</h4>
+        <p>The feed comes from our own Solana validator over Yellowstone gRPC — not a resold API.
+          That means every trade carries the <code>wallet</code> that made it, so agents can act on
+          who is buying, not just how much.</p>
+      </div>
+      <div class="glass step">
+        <div class="stepn">2</div>
+        <h4>A coin is an episode</h4>
+        <p>The median launch trades for <b>2 minutes</b> and sees <b>8 trades</b>. There is no chart
+          to hold. So every launch is stored as one <em>episode</em> — what was knowable in the first
+          30–180 seconds, and what happened afterwards.</p>
+      </div>
+      <div class="glass step">
+        <div class="stepn">3</div>
+        <h4>One model scores them all</h4>
+        <p>A single model trained on every episode rates each launch 0–1 on whether it reaches
+          <code>+30%</code> before <code>−25%</code>. You don't train your own — you filter on its
+          score. One model fit on everything beats thousands fit on scraps.</p>
+      </div>
+      <div class="glass step">
+        <div class="stepn">4</div>
+        <h4>Your words become a config</h4>
+        <p>An AI reads your sentence once and writes a validated config. It never runs at trade
+          time — what trades is deterministic code, so a backtest and a live run make
+          <b>identical decisions</b>.</p>
+      </div>
+      <div class="glass step">
+        <div class="stepn">5</div>
+        <h4>Backtest, then paper trade</h4>
+        <p>Tested against every stored episode with real fees, bonding-curve slippage and
+          second-by-second exits. Then it runs live on paper money — same filter, same cost model,
+          same code.</p>
+      </div>
+      <div class="glass step">
+        <div class="stepn">6</div>
+        <h4>Ranked honestly</h4>
+        <p>Backtest, paper and live are ranked <b>separately and never merged</b>. A backtest is a
+          claim about the past. Only a live run risked anything.</p>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:28px">
+      <div class="glass"><h3>What the data actually says</h3><div class="body">
+        <p class="hint" style="margin:0 0 14px">Measured on our own episodes, not claimed.</p>
+        <table class="facts"><tbody>
+          <tr><td>Median coin lifetime</td><td>2 min · 8 trades</td></tr>
+          <tr><td>Launch reaches +30% before −25%</td><td>11.3%</td></tr>
+          <tr><td>Model's top decile does</td><td class="up">35.0% · 3.0×</td></tr>
+          <tr><td>Real X profile → graduates</td><td class="up">9.5%</td></tr>
+          <tr><td>No link → graduates</td><td>2.5%</td></tr>
+          <tr><td>Link to someone else's tweet</td><td class="down">1.1%</td></tr>
+          <tr><td>Dev who launched 3+ before</td><td class="down">×0.44 per trade</td></tr>
+        </tbody></table>
+      </div></div>
+      <div class="glass"><h3>What we won't pretend</h3><div class="body">
+        <p style="margin:0 0 12px">No configuration tested here is profitable yet. The best still
+          loses roughly <b>17% per trade</b> once fees and slippage are charged.</p>
+        <p class="hint" style="margin:0 0 12px">Filters move it from ×0.03 to ×0.83 — entry selection
+          clearly works. The gap that remains is exits, and we would rather show you that than a
+          number that flatters the product.</p>
+        <p class="hint" style="margin:0">Every ambiguity in the backtester resolves <em>against</em>
+          the strategy: gap past a stop and you eat the gap; gap past a take-profit and you get the
+          take-profit, never the overshoot. A coin nobody traded again settles at zero, not at
+          break-even.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ LIVE ══════════ -->
+  <section class="page" id="page-live">
     <h1>Live</h1>
     <p class="sub">Every transaction on the chain as it lands, and what the agents took out of it.</p>
     <div class="stats" id="scanStats"></div>
@@ -245,12 +336,13 @@
     </div>
   </section>
 
+  <!-- ══════════ BUILD ══════════ -->
   <section class="page" id="page-build">
     <h1>Build an agent</h1>
     <p class="sub">Describe it in plain English. The AI writes the config once, when you save —
       what trades is that config, so a backtest and a live run make identical decisions.</p>
     <div class="grid gside">
-      <div style="display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;flex-direction:column;gap:16px">
         <div class="glass"><div class="body">
           <div class="steplbl">Step 1 — describe it</div>
           <textarea id="prompt" placeholder="Buy coins 60 seconds after launch that the model rates above 0.5, with a real X profile and at least 20 different traders. Take profit at 30%, stop out at 25%, trail 15%, never hold past 5 minutes."></textarea>
@@ -260,12 +352,11 @@
           </div>
           <div id="compileMsg"></div>
         </div></div>
-
         <div class="glass" id="builder" hidden><div class="body">
           <div class="steplbl">Step 2 — entry rules</div>
           <div class="row" style="margin-bottom:13px">
             <input id="name" placeholder="Agent name" style="flex:1">
-            <select id="horizon" style="width:auto;min-width:145px">
+            <select id="horizon" style="width:auto;min-width:142px">
               <option value="30">decide at 30s</option>
               <option value="60" selected>decide at 60s</option>
               <option value="180">decide at 180s</option>
@@ -273,7 +364,6 @@
           </div>
           <div id="filters"></div>
           <button class="ghost sm" id="addFilter">+ condition</button>
-
           <div class="steplbl" style="margin-top:22px">Step 3 — exits &amp; size</div>
           <div class="cols">
             <div><label class="f">Take profit %</label><input id="tp" type="number" value="30"></div>
@@ -289,9 +379,7 @@
           </div>
         </div></div>
       </div>
-
-      <div class="glass">
-        <h3>Backtest</h3>
+      <div class="glass"><h3>Backtest</h3>
         <div class="body" id="results"><div class="empty">Describe an agent and run a backtest.</div></div>
       </div>
     </div>
@@ -300,7 +388,7 @@
   <section class="page" id="page-model">
     <h1>The base model</h1>
     <p class="sub">One model trained on every episode, shared by everyone. You don't train your own —
-      you filter on its score. Nobody has enough data alone to beat one model fit on all of it.</p>
+      you filter on its score.</p>
     <div id="modelBody"><div class="empty">Loading…</div></div>
   </section>
 
@@ -312,8 +400,7 @@
 
   <section class="page" id="page-board">
     <h1>Leaderboard</h1>
-    <p class="sub">Backtest, paper and live rank separately and never merge — a backtest is a claim
-      about the past, and only a live run risked anything.</p>
+    <p class="sub">Backtest, paper and live rank separately and never merge.</p>
     <div class="tabs">
       <button class="tab bt" data-mode="backtest" aria-selected="true">Backtest</button>
       <button class="tab bt" data-mode="paper" aria-selected="false">Paper</button>
@@ -336,26 +423,26 @@ const api = async (p, o) => {
 const n = (v, d = 2) => (v == null || Number.isNaN(+v) ? "—" : (+v).toFixed(d));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 const cls = (v) => (v > 0 ? "up" : v < 0 ? "down" : "");
-const IMG = "https://api.polyx.trade/img?u=";
+const IMGSRC = "https://api.polyx.trade/img?u=";
 const ago = (ts) => {
   const s = Math.max(0, (Date.now() - Date.parse(String(ts).replace(" ", "T") + "Z")) / 1000);
   return s < 60 ? `${s.toFixed(0)}s` : s < 3600 ? `${(s/60).toFixed(0)}m` : `${(s/3600).toFixed(0)}h`;
 };
 function coinHTML(r) {
   const label = esc(r.symbol || (r.mint || "").slice(0, 6));
-  const src = r.image ? IMG + encodeURIComponent(r.image) : "";
-  const pic = src
-    ? `<img src="${src}" alt="" loading="lazy" decoding="async" onerror="this.className='ph';this.removeAttribute('src')">`
+  const pic = r.image
+    ? `<img src="${IMGSRC}${encodeURIComponent(r.image)}" alt="" loading="lazy" decoding="async"
+         onerror="this.className='ph';this.removeAttribute('src')">`
     : `<span class="ph"></span>`;
   return `<div class="coin">${pic}<span>${label}</span></div>`;
 }
 const stat = (k, v, c = "", s = "") =>
   `<div class="glass stat"><div class="k">${k}</div><div class="v ${c}">${v}</div>${s?`<div class="s">${s}</div>`:""}</div>`;
 
-let page = (location.hash || "#live").slice(1);
-const PAGES = ["live","build","model","mine","board"];
+let page = (location.hash || "#home").slice(1);
+const PAGES = ["home","live","build","model","mine","board"];
 function show(p) {
-  if (!PAGES.includes(p)) p = "live";
+  if (!PAGES.includes(p)) p = "home";
   page = p; location.hash = p;
   PAGES.forEach((x) => $(`#page-${x}`).classList.toggle("on", x === p));
   document.querySelectorAll(".navlink").forEach((el) =>
@@ -363,9 +450,12 @@ function show(p) {
   if (p === "model") loadModel();
   if (p === "mine") loadMine();
   if (p === "board") loadBoard(mode);
+  if (p === "home") loadHome();
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
-document.querySelectorAll(".navlink").forEach((el) => (el.onclick = () => show(el.dataset.page)));
-addEventListener("hashchange", () => show((location.hash || "#live").slice(1)));
+document.querySelectorAll("[data-page]").forEach((el) => (el.onclick = () => show(el.dataset.page)));
+document.querySelectorAll("[data-go]").forEach((el) => (el.onclick = () => show(el.dataset.go)));
+addEventListener("hashchange", () => show((location.hash || "#home").slice(1)));
 
 async function navStats() {
   try {
@@ -378,10 +468,20 @@ async function navStats() {
 }
 navStats(); setInterval(navStats, 60000);
 
-// ── live trade stream ────────────────────────────────────────────
-// Rows are APPENDED, never re-rendered. Rebuilding innerHTML on a timer is what
-// made the images stay grey — every <img> was destroyed before it finished
-// loading — and what made trades arrive in visible clumps of ten.
+async function loadHome() {
+  try {
+    const [s, m] = await Promise.all([api("/api/stats"), api("/api/model").catch(() => null)]);
+    $("#homeStats").innerHTML =
+      stat("Episodes", (+s.episodes||0).toLocaleString(), "", "launches on record") +
+      stat("Coins", (+s.coins||0).toLocaleString(), "", "seen and stored") +
+      stat("Model AUC", m && m.trained ? n(m.auc,3) : "—", "up", "held out by time") +
+      stat("Top decile", m && m.trained ? n(m.top10_rate*100,1)+"%" : "—", "up",
+           m && m.trained ? `${n(m.top10_lift,2)}× base rate` : "") +
+      stat("Latest data", String(s.newest||"").slice(5,16).replace(" ","  "), "", "UTC");
+  } catch {}
+}
+
+// ── live stream ──────────────────────────────────────────────────
 const MAX_ROWS = 70;
 function addTrade(t) {
   const body = $("#txBody");
@@ -396,7 +496,6 @@ function addTrade(t) {
   body.prepend(tr);
   while (body.children.length > MAX_ROWS) body.lastElementChild.remove();
 }
-// Ages tick locally so a quiet market still looks alive without re-fetching.
 setInterval(() => {
   document.querySelectorAll("#txBody td[data-ts]").forEach((td) => (td.textContent = ago(td.dataset.ts)));
 }, 1000);
@@ -407,9 +506,8 @@ function openStream() {
   es = new EventSource(BASE + "api/live/stream");
   es.addEventListener("trade", (e) => { if (page === "live") addTrade(JSON.parse(e.data)); });
   es.onopen = () => ($("#txDot").className = "dot on");
-  es.onerror = () => ($("#txDot").className = "dot"); // EventSource retries on its own
+  es.onerror = () => ($("#txDot").className = "dot");
 }
-// Seed the table once so it is not empty while the first events arrive.
 api("/api/live/trades").then(({ trades }) => {
   trades.slice().reverse().forEach(addTrade);
   document.querySelectorAll("#txBody tr").forEach((tr) => tr.classList.remove("new"));
@@ -443,7 +541,6 @@ tickPicks(); setInterval(tickPicks, 6000);
 let FEATURES = [];
 await api("/api/features").then((f) => (FEATURES = f)).catch(() => {});
 const OPS = [["gte","≥"],["gt",">"],["lte","≤"],["lt","<"],["eq","="],["neq","≠"]];
-
 function filterRow(feature = "model_score", op = "gte", value = "0.5") {
   const el = document.createElement("div");
   el.className = "filter";
@@ -478,7 +575,6 @@ $("#manual").onclick = () => {
   $("#builder").hidden = false;
   if (!$("#filters").children.length) $("#filters").appendChild(filterRow());
 };
-
 function read() {
   const entry_all = [...$("#filters").querySelectorAll(".filter")].map((el) => {
     const feature = el.querySelector(".f").value, op = el.querySelector(".o").value;
@@ -509,7 +605,6 @@ function write(s) {
   $("#tr").value = s.exit.trailing_stop_pct ?? ""; $("#hold").value = s.exit.max_hold_s;
   $("#size").value = s.sizing.value; $("#conc").value = s.sizing.max_concurrent;
 }
-
 $("#compile").onclick = async () => {
   const text = $("#prompt").value.trim(); if (!text) return;
   const b = $("#compile"); b.disabled = true; b.innerHTML = `<span class="spin"></span>Compiling`;
@@ -521,7 +616,6 @@ $("#compile").onclick = async () => {
   } catch (e) { $("#compileMsg").innerHTML = `<div class="note err">${esc(e.message)}</div>`; }
   finally { b.disabled = false; b.textContent = "Compile with AI"; }
 };
-
 $("#run").onclick = async () => {
   const b = $("#run"); b.disabled = true; b.innerHTML = `<span class="spin"></span>Running`;
   try {
@@ -530,7 +624,6 @@ $("#run").onclick = async () => {
   } catch (e) { $("#results").innerHTML = `<div class="note err">${esc(e.message)}</div>`; }
   finally { b.disabled = false; b.textContent = "Backtest"; }
 };
-
 function renderBT(r) {
   const warn = (r.warnings||[]).map((w)=>`<div class="note">${esc(w)}</div>`).join("");
   if (!r.nTrades) { $("#results").innerHTML = `<div class="empty">Nothing matched these rules.</div>${warn}`; return; }
@@ -555,7 +648,6 @@ function renderBT(r) {
         <td class="num ${cls(t.pnlSol)}">${n(t.pnlSol,3)}</td></tr>`).join("")}</tbody>
     </table></div>`;
 }
-
 $("#deploy").onclick = async () => {
   const b = $("#deploy"); b.disabled = true; b.innerHTML = `<span class="spin"></span>Deploying`;
   try {
@@ -600,11 +692,11 @@ async function loadModel() {
             score up, red pushes it down.</p>
           <table><tbody>${m.features.slice(0,14).map((f)=>`<tr>
             <td>${esc(f.name)}</td>
-            <td style="width:58%"><div class="bar"><i style="width:${(Math.abs(f.weight)/maxW*100).toFixed(0)}%;background:${f.weight>0?"var(--green)":"var(--red)"}"></i></div></td>
+            <td style="width:58%"><div class="bar"><i style="width:${(Math.abs(f.weight)/maxW*100).toFixed(0)}%;background:${f.weight>0?"var(--green-lit)":"var(--red)"}"></i></div></td>
             <td class="num ${cls(f.weight)}">${f.weight>0?"+":""}${n(f.weight,3)}</td></tr>`).join("")}</tbody></table>
         </div></div>
       </div>
-      <div class="glass" style="margin-top:18px"><h3>Its best calls right now</h3>
+      <div class="glass" style="margin-top:16px"><h3>Its best calls right now</h3>
         <div class="scroll" style="max-height:340px"><table>
           <thead><tr><th>Coin</th><th>Score</th><th>Age</th><th>Traders</th><th>Vol</th><th>X</th></tr></thead>
           <tbody>${m.picks.map((p)=>`<tr>
@@ -649,14 +741,14 @@ async function loadMine() {
               ? `<button class="ghost sm" data-stop="${esc(r.run_id)}">stop</button>`
               : `<button class="ghost sm" data-start="${esc(r.id)}">start</button>`}</td></tr>`).join("")}
         </tbody></table></div></div>
-      ${paper && paper.open.length ? `<div class="glass" style="margin-top:18px"><h3>Holding now</h3>
+      ${paper && paper.open.length ? `<div class="glass" style="margin-top:16px"><h3>Holding now</h3>
         <div class="scroll" style="max-height:300px"><table>
         <thead><tr><th>Coin</th><th>Agent</th><th>Size</th><th>Now</th><th>Open PnL</th></tr></thead>
         <tbody>${paper.open.map((p)=>{const m=+p.mult||0,pl=p.size_sol*(m-1);return `<tr>
           <td>${coinHTML(p)}</td><td>${esc(p.strategy_name)}</td><td class="num">${n(p.size_sol,2)}</td>
           <td class="num ${cls(m-1)}">×${n(m,2)}</td><td class="num ${cls(pl)}">${n(pl,3)}</td></tr>`;}).join("")}
         </tbody></table></div></div>`:""}
-      ${paper && paper.recent.length ? `<div class="glass" style="margin-top:18px"><h3>Recently closed</h3>
+      ${paper && paper.recent.length ? `<div class="glass" style="margin-top:16px"><h3>Recently closed</h3>
         <div class="scroll" style="max-height:340px"><table>
         <thead><tr><th>Coin</th><th>Agent</th><th>Held</th><th>Exit</th><th>PnL</th></tr></thead>
         <tbody>${paper.recent.map((p)=>`<tr>

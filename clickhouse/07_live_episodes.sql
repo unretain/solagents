@@ -96,6 +96,10 @@ SELECT
     toUInt32(dateDiff('second', a.t0, now()))                AS age_now_s,
     ifNull(tk.symbol, '')                                    AS symbol,
     ifNull(tk.name, '')                                      AS name,
+    -- Carried here so consumers never join `tokens` again on top of this view.
+    -- The paper engine did exactly that, adding a second full-table aggregation
+    -- to a query that was already scanning 96M rows.
+    ifNull(tk.image, '')                                     AS image,
 
     a.n_trades, a.n_buys, a.n_sells, a.n_traders, a.n_buyers,
     a.vol_sol, a.buy_vol_sol,

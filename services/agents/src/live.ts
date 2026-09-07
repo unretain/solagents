@@ -49,7 +49,7 @@ const SELECT = `
 export async function livePicks(s: Strategy, freshS = 900, limit = 50): Promise<LivePick[]> {
   return chQuery<LivePick>(`
     SELECT ${SELECT}
-    FROM live_episodes
+    FROM live_snapshot
     WHERE ${toSql(s)}
       AND age_now_s <= ${Math.max(s.decide_at_s + freshS, s.decide_at_s + 30)}
     ORDER BY t0 DESC
@@ -114,7 +114,7 @@ export async function scanRate(): Promise<{ trades: number; coins: number; sol: 
 export async function liveTape(limit = 40): Promise<LivePick[]> {
   return chQuery<LivePick>(`
     SELECT ${SELECT}
-    FROM live_episodes
+    FROM live_snapshot
     WHERE horizon_s = 60 AND n_trades >= 3
     ORDER BY t0 DESC
     LIMIT ${limit}
