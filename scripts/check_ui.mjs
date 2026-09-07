@@ -32,7 +32,7 @@ const REQUIRED = [
   "loadTerminal", "selectCoin", "loadCoinDetail", "loadCandles", "initChart",
   "applyBars", "ensureYAxis", "buildStyles", "fmtClock",
   // build
-  "filterRow", "read", "write", "renderBT", "paintLlm", "initCA", "openCode", "closeCode", "startScan", "stopScan", "scanRead", "scanTick", "scanDraw", "initScanChart", "renderPresets", "renderFeatureTable",
+  "filterRow", "read", "write", "renderBT", "paintLlm", "initCA", "loadWallet", "openCode", "closeCode", "startScan", "stopScan", "scanRead", "scanTick", "scanDraw", "initScanChart", "renderPresets", "renderFeatureTable",
   // pages
   "loadModel", "loadMine", "loadBoard",
   // wallet

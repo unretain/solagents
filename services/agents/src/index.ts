@@ -19,7 +19,7 @@ import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
 import { llmStatus } from "./llm/client.js";
 import { cors } from "./cors.js";
-import { createWallet, walletFor, withdraw, liveEnabled } from "./live/wallet.js";
+import { ensureWallet, walletFor, withdraw, liveEnabled } from "./live/wallet.js";
 import { runBacktest } from "./backtest/run.js";
 import { q, newId, migrate, describeError } from "./db.js";
 import { chQuery } from "./clickhouse.js";
@@ -99,7 +99,7 @@ app.get("/api/auth/nonce", (_req, res) => {
   res.json({ nonce, message: messageFor(nonce) });
 });
 
-app.post("/api/auth/verify", (req, res) => {
+app.post("/api/auth/verify", async (req, res) => {
   const body = z.object({
     pubkey: z.string().min(32).max(44),
     signature: z.string().min(64).max(120),
@@ -119,7 +119,15 @@ app.post("/api/auth/verify", (req, res) => {
   res.setHeader("Set-Cookie",
     `pl_session=${encodeURIComponent(out.token)}; Path=/; Max-Age=${30*24*3600}; ` +
     `SameSite=None; HttpOnly; Secure`);
-  res.json({ ok: true, pubkey: body.data.pubkey });
+  // Give them an internal wallet immediately, so there is an address to fund
+  // before they have decided what to run. Failing to create one must not fail
+  // the sign-in: live trading may simply not be configured on this server.
+  let deposit: string | null = null;
+  if (liveEnabled()) {
+    try { deposit = await ensureWallet(body.data.pubkey); }
+    catch (e) { console.warn("[auth] wallet not created:", describeError(e)); }
+  }
+  res.json({ ok: true, pubkey: body.data.pubkey, deposit });
 });
 
 app.get("/api/auth/me", (req, res) => res.json({ pubkey: sessionOf(req) }));
@@ -489,41 +497,37 @@ app.post("/api/runs", async (req, res, next) => {
        wantsLive ? "stopped" : "running"],
     );
     if (wantsLive) {
-      const pubkey = await createWallet(id, owner);
       invalidate("agents");
-      return res.json({ id, mode: "live", status: "stopped", deposit: pubkey });
+      return res.json({ id, mode: "live", status: "stopped", deposit: await ensureWallet(owner) });
     }
     invalidate("agents");
     res.json({ id, mode: "paper" });
   } catch (e) { next(e); }
 });
 
-/** The deposit address and live balance for a run. Owner only. */
-app.get("/api/runs/:id/wallet", async (req, res, next) => {
+/** The signed-in account's internal wallet: address and live balance. */
+app.get("/api/wallet", async (req, res, next) => {
   try {
     const owner = sessionOf(req);
     if (!owner) return res.status(401).json({ error: "Connect a wallet." });
-    const w = await walletFor(String(req.params.id));
-    if (!w) return res.status(404).json({ error: "no wallet for this run" });
-    if (w.ownerId !== owner) return res.status(403).json({ error: "not your run" });
-    // ownerId is the requester's own address; no reason to echo it back.
-    res.json({ pubkey: w.pubkey, sol: w.sol, lamports: w.lamports });
+    if (!liveEnabled()) return res.json({ enabled: false });
+    const w = (await walletFor(owner)) ?? { pubkey: await ensureWallet(owner), sol: 0, lamports: 0 };
+    res.json({ enabled: true, ...w });
   } catch (e) { next(e); }
 });
 
 /**
- * Withdraw to the owner's wallet.
+ * Withdraw to the connected wallet.
  *
- * There is no destination parameter, deliberately. See wallet.ts: the funds can
- * only go back to the address that created the run.
+ * There is no destination parameter, deliberately. See live/wallet.ts: the
+ * funds can only go back to the address the user signed in with.
  */
-app.post("/api/runs/:id/withdraw", async (req, res, next) => {
+app.post("/api/wallet/withdraw", async (req, res) => {
   try {
     const owner = sessionOf(req);
     if (!owner) return res.status(401).json({ error: "Connect a wallet." });
     const body = z.object({ lamports: z.number().int().positive().optional() }).parse(req.body ?? {});
-    const out = await withdraw(String(req.params.id), owner, body.lamports);
-    res.json({ ok: true, ...out });
+    res.json({ ok: true, ...(await withdraw(owner, body.lamports)) });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "withdrawal failed" });
   }

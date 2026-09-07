@@ -293,6 +293,10 @@
 #codeBox:focus { outline: none; border-color: hsl(142 76% 36% / .55); }
 #codeBox.bad { border-color: hsl(0 72% 55% / .65); }
 .tag.err { background: hsl(0 72% 55% / .14); color: #fca5a5; }
+
+.walletrow { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.walletbal { font-size: 21px; font-weight: 650; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -558,6 +562,28 @@
   <section class="page" id="page-mine">
     <h1>My agents</h1>
     <p class="sub">Every agent with its backtest beside how it is actually doing on live paper money.</p>
+    <div class="glass" id="walletCard" style="display:none;margin-bottom:20px"><div class="body">
+      <h3 style="margin:0 0 4px">Trading wallet</h3>
+      <p class="hint" style="margin:0 0 14px">Your agents trade from this. It is separate from the
+        wallet you signed in with, and it holds only what you send it, so that balance is the most
+        an agent can ever lose. Withdrawals go back to your connected wallet and nowhere else.</p>
+      <div class="walletrow">
+        <div>
+          <div class="steplbl" style="margin:0 0 6px">DEPOSIT ADDRESS</div>
+          <button class="ca" id="depPill" title="Click to copy">
+            <span class="caval" id="depVal"></span></button>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="steplbl" style="margin:0 0 6px">BALANCE</div>
+          <div class="walletbal" id="depBal">-</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="ghost" id="depRefresh">Refresh</button>
+        <button class="ghost" id="depWithdraw">Withdraw all</button>
+        <span class="tag" id="depMsg" style="margin-left:auto"></span>
+      </div>
+    </div></div>
     <div id="mineBody"><div class="empty">Loading…</div></div>
   </section>
 
@@ -979,8 +1005,55 @@ async function loadModel() {
 }
 
 // ── my agents ────────────────────────────────────────────────────
+/**
+ * The account's internal trading wallet.
+ *
+ * Shown on My agents rather than behind a run, because the address has to exist
+ * and be funded before there is anything worth running - asking someone to
+ * create an agent first just to discover where to send SOL is backwards.
+ */
+async function loadWallet() {
+  const card = $("#walletCard");
+  if (!card) return;
+  let w;
+  try {
+    w = await api("/api/wallet");
+  } catch {
+    card.style.display = "none";   // signed out, or live trading is off here
+    return;
+  }
+  if (!w.enabled) { card.style.display = "none"; return; }
+  card.style.display = "";
+  $("#depVal").textContent = w.pubkey;
+  $("#depBal").innerHTML = `${n(w.sol, 4)} <span class="hint">SOL</span>`;
+}
+
+$("#depPill").onclick = async () => {
+  const v = $("#depVal").textContent;
+  if (!v) return;
+  try { await navigator.clipboard.writeText(v); } catch { /* selection fallback below */ }
+  const pill = $("#depPill");
+  pill.classList.add("copied");
+  $("#depVal").textContent = "Copied";
+  setTimeout(() => { pill.classList.remove("copied"); $("#depVal").textContent = v; }, 1200);
+};
+$("#depRefresh").onclick = () => { $("#depMsg").textContent = ""; loadWallet(); };
+$("#depWithdraw").onclick = async () => {
+  const b = $("#depWithdraw"), msg = $("#depMsg");
+  b.disabled = true; msg.className = "tag"; msg.textContent = "Sending";
+  try {
+    const r = await api("/api/wallet/withdraw", { method: "POST", body: "{}" });
+    msg.className = "tag profile";
+    msg.textContent = `Sent ${(r.lamports / 1e9).toFixed(4)} SOL`;
+    loadWallet();
+  } catch (e) {
+    msg.className = "tag err"; msg.textContent = e.message;
+  } finally { b.disabled = false; }
+};
+
 async function loadMine() {
   try {
+    loadWallet();
     const rows = await api("/api/agents");
     const paper = await api("/api/paper").catch(() => null);
     if (!rows.length) { $("#mineBody").innerHTML = `<div class="glass"><div class="empty">No agents yet - build one.</div></div>`; return; }

@@ -10,12 +10,12 @@
  * this that a hosted bot cannot copy: the node that told us about the launch is
  * the node that submits the buy, so there is no public RPC queue in between.
  *
- * Every function here takes a runId and derives the signer from it. None of
- * them accepts a keypair, so no caller can trade with a wallet it was not
- * given authority over.
+ * Every function here takes an account id and derives the signer from it. None
+ * accepts a keypair, so no caller can trade with a wallet it was not
+ * authenticated as.
  */
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
-import { connection, signerForRun } from "./wallet.js";
+import { connection, signerForOwner } from "./wallet.js";
 
 const JUP = process.env.JUPITER_API || "https://lite-api.jup.ag/swap/v1";
 export const WSOL = "So11111111111111111111111111111111111111112";
@@ -72,8 +72,8 @@ export interface FillResult {
  * the signature alone is how a bot ends up believing it holds a coin it never
  * bought.
  */
-export async function swap(runId: string, q: Quote): Promise<FillResult> {
-  const signer = await signerForRun(runId);
+export async function swap(ownerId: string, q: Quote): Promise<FillResult> {
+  const signer = await signerForOwner(ownerId);
 
   const r = await fetch(`${JUP}/swap`, {
     method: "POST",
@@ -117,8 +117,8 @@ export async function swap(runId: string, q: Quote): Promise<FillResult> {
 }
 
 /** Buy `mint` with `lamports` of SOL. */
-export async function buy(runId: string, mint: string, lamports: number): Promise<FillResult> {
-  return swap(runId, await quote(WSOL, mint, lamports));
+export async function buy(ownerId: string, mint: string, lamports: number): Promise<FillResult> {
+  return swap(ownerId, await quote(WSOL, mint, lamports));
 }
 
 /**
@@ -128,13 +128,13 @@ export async function buy(runId: string, mint: string, lamports: number): Promis
  * transfer fee or a rounding difference all leave the real balance below what
  * our books say, and a sell for more than is held simply fails.
  */
-export async function sellAll(runId: string, mint: string): Promise<FillResult | null> {
-  const signer = await signerForRun(runId);
+export async function sellAll(ownerId: string, mint: string): Promise<FillResult | null> {
+  const signer = await signerForOwner(ownerId);
   const accounts = await connection.getParsedTokenAccountsByOwner(
     signer.publicKey, { mint: new PublicKey(mint) },
   );
   const raw = accounts.value[0]?.account.data.parsed.info.tokenAmount.amount;
   const held = Number(raw ?? 0);
   if (!held) return null;
-  return swap(runId, await quote(mint, WSOL, held));
+  return swap(ownerId, await quote(mint, WSOL, held));
 }

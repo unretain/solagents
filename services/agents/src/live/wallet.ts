@@ -1,10 +1,13 @@
 /**
  * Custody for live runs.
  *
- * One wallet per run. The deposit is the bankroll, which is the whole safety
- * argument: an agent can only ever lose what was put into its own wallet, and
- * nothing it does - a bad strategy, a bug in the exit path, a stolen session -
- * reaches another run or the owner's personal funds.
+ * One internal wallet per user, created the moment they connect, so an address
+ * to fund exists before they have decided what to run. Agents trade from it,
+ * and a run's bankroll is the cap on what that run may commit.
+ *
+ * It is separate from the wallet they connected with on purpose. We never hold
+ * the key to the wallet somebody signs in with; this one exists only to be
+ * funded deliberately, and its balance is the entire amount at risk.
  *
  * The secret key is encrypted at rest with AES-256-GCM under LIVE_WALLET_KEY,
  * which exists only in the server environment. A dump of the database is not
@@ -57,28 +60,34 @@ function decrypt(blob: string): Uint8Array {
  * The signer for a run.
  *
  * Exported for execute.ts only, which needs it to sign swaps. It is addressed
- * by run id and nothing else: there is no way to ask for "the key for this
- * public address", so a caller can only ever sign for a run it already named,
- * and the routes above that check ownership before naming one.
+ * by account and nothing else: there is no way to ask for "the key for this
+ * public address", so a caller can only sign for an account it already
+ * authenticated as.
  */
-export async function signerForRun(runId: string): Promise<Keypair> {
+export async function signerForOwner(ownerId: string): Promise<Keypair> {
   const [row] = await q<{ secret_enc: string }>(
-    `SELECT secret_enc FROM sa_wallet WHERE run_id = $1`, [runId],
+    `SELECT secret_enc FROM sa_wallet WHERE owner_id = $1`, [ownerId],
   );
-  if (!row) throw new Error("this run has no wallet");
+  if (!row) throw new Error("no wallet for this account");
   return Keypair.fromSecretKey(decrypt(row.secret_enc));
 }
 
-/** Create the wallet for a run, once. Returns only the public address. */
-export async function createWallet(runId: string, ownerId: string): Promise<string> {
+/**
+ * The account's wallet, created on first sight. Returns only the address.
+ *
+ * ON CONFLICT DO NOTHING plus a re-read, rather than "check then insert": two
+ * sign-ins arriving together would both see no row and both generate a keypair,
+ * and the loser's would be the one the user was shown and might have funded.
+ */
+export async function ensureWallet(ownerId: string): Promise<string> {
   const kp = Keypair.generate();
   await q(
-    `INSERT INTO sa_wallet (run_id, owner_id, pubkey, secret_enc) VALUES ($1,$2,$3,$4)
-     ON CONFLICT (run_id) DO NOTHING`,
-    [runId, ownerId, kp.publicKey.toBase58(), encrypt(kp.secretKey)],
+    `INSERT INTO sa_wallet (owner_id, pubkey, secret_enc) VALUES ($1,$2,$3)
+     ON CONFLICT (owner_id) DO NOTHING`,
+    [ownerId, kp.publicKey.toBase58(), encrypt(kp.secretKey)],
   );
   const [row] = await q<{ pubkey: string }>(
-    `SELECT pubkey FROM sa_wallet WHERE run_id = $1`, [runId],
+    `SELECT pubkey FROM sa_wallet WHERE owner_id = $1`, [ownerId],
   );
   return row.pubkey;
 }
@@ -87,16 +96,15 @@ export interface WalletView {
   pubkey: string;
   lamports: number;
   sol: number;
-  ownerId: string;
 }
 
-export async function walletFor(runId: string): Promise<WalletView | null> {
-  const [row] = await q<{ pubkey: string; owner_id: string }>(
-    `SELECT pubkey, owner_id FROM sa_wallet WHERE run_id = $1`, [runId],
+export async function walletFor(ownerId: string): Promise<WalletView | null> {
+  const [row] = await q<{ pubkey: string }>(
+    `SELECT pubkey FROM sa_wallet WHERE owner_id = $1`, [ownerId],
   );
   if (!row) return null;
   const lamports = await connection.getBalance(new PublicKey(row.pubkey));
-  return { pubkey: row.pubkey, lamports, sol: lamports / LAMPORTS_PER_SOL, ownerId: row.owner_id };
+  return { pubkey: row.pubkey, lamports, sol: lamports / LAMPORTS_PER_SOL };
 }
 
 /**
@@ -112,31 +120,30 @@ const RENT_FLOOR = 890_880;
 const FEE_BUFFER = 10_000;
 
 /**
- * Move funds out, to the owner's own wallet only.
+ * Move funds out, to the connected wallet only.
  *
- * The destination is not taken from the caller: it is the wallet that created
- * the run. Someone holding a stolen session for that account can therefore only
- * send the money to the account they already control, which makes a stolen
- * session useless for theft.
+ * The destination is not a parameter: it is the account id, which IS the
+ * Solana address the user signed in with. Someone holding a stolen session can
+ * therefore only send the money to the wallet they already control, which makes
+ * a stolen session useless for theft.
  */
-export async function withdraw(runId: string, requestedBy: string, lamports?: number): Promise<{
+export async function withdraw(ownerId: string, lamports?: number): Promise<{
   signature: string; lamports: number;
 }> {
-  const [row] = await q<{ pubkey: string; owner_id: string }>(
-    `SELECT pubkey, owner_id FROM sa_wallet WHERE run_id = $1`, [runId],
+  const [row] = await q<{ pubkey: string }>(
+    `SELECT pubkey FROM sa_wallet WHERE owner_id = $1`, [ownerId],
   );
-  if (!row) throw new Error("this run has no wallet");
-  if (row.owner_id !== requestedBy) throw new Error("not your run");
+  if (!row) throw new Error("no wallet for this account");
 
   const balance = await connection.getBalance(new PublicKey(row.pubkey));
   const spendable = balance - RENT_FLOOR - FEE_BUFFER;
   if (spendable <= 0) throw new Error("nothing to withdraw");
   const amount = lamports ? Math.min(lamports, spendable) : spendable;
 
-  const signer = await signerForRun(runId);
+  const signer = await signerForOwner(ownerId);
   const tx = new Transaction().add(SystemProgram.transfer({
     fromPubkey: signer.publicKey,
-    toPubkey: new PublicKey(row.owner_id),
+    toPubkey: new PublicKey(ownerId),
     lamports: amount,
   }));
   const { blockhash } = await connection.getLatestBlockhash("confirmed");
@@ -148,9 +155,9 @@ export async function withdraw(runId: string, requestedBy: string, lamports?: nu
     skipPreflight: false, maxRetries: 3,
   });
   await q(
-    `INSERT INTO sa_withdrawal (id, run_id, to_pubkey, lamports, signature)
+    `INSERT INTO sa_withdrawal (id, owner_id, to_pubkey, lamports, signature)
      VALUES ($1,$2,$3,$4,$5)`,
-    [`wd_${randomBytes(8).toString("hex")}`, runId, row.owner_id, amount, signature],
+    [`wd_${randomBytes(8).toString("hex")}`, ownerId, ownerId, amount, signature],
   );
   return { signature, lamports: amount };
 }
