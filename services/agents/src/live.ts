@@ -16,6 +16,9 @@ export interface LivePick {
   mint: string;
   symbol: string;
   name: string;
+  /** carried from live_snapshot so the picks list shows coin art like every
+   *  other list does — without it these rows rendered as blank placeholders */
+  image: string;
   t0: string;
   ageS: number;
   horizonS: number;
@@ -33,7 +36,7 @@ export interface LivePick {
 }
 
 const SELECT = `
-  mint, symbol, name, toString(t0) AS t0, age_now_s AS ageS, horizon_s AS horizonS,
+  mint, symbol, name, image, toString(t0) AS t0, age_now_s AS ageS, horizon_s AS horizonS,
   n_traders AS nTraders, round(vol_sol, 3) AS volSol, round(buy_ratio, 3) AS buyRatio,
   round(fees_sol + creator_fees_sol, 5) AS feesSol,
   twitter_kind AS twitterKind, llm_verdict AS llmVerdict,

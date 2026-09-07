@@ -38,7 +38,18 @@ app.use(compression({
 }));
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-app.use(express.static(path.join(here, "../public"), { maxAge: "1h" }));
+// HTML must never be cached: a one-hour max-age on index.html meant every deploy
+// took an hour to reach anyone already carrying a copy, and made fixes look like
+// they had not been made. Immutable assets (logo, favicon) still cache — they
+// are only re-fetched when their bytes change, which ETag handles.
+app.use(express.static(path.join(here, "../public"), {
+  maxAge: "7d",
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith(".html")) {
+      res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    }
+  },
+}));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

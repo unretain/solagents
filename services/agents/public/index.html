@@ -949,6 +949,103 @@ const usd = (v) => {
 };
 let chart = null, selMint = null, tf = "1m", solPrice = 0, watching = [];
 
+async function loadTerminal() {
+  try {
+    watching = await api("/api/watchlist");
+    $("#wlCount").textContent = `${watching.length} coins`;
+    $("#wl").innerHTML = watching.map((w) => {
+      const hot = +w.score >= 0.4;
+      return `<div class="wl-item" data-mint="${esc(w.mint)}" aria-selected="${w.mint === selMint}">
+        ${imgTag(w.image, "ph")}
+        <div style="min-width:0">
+          <div class="wl-nm">${esc(w.symbol || w.mint.slice(0, 6))}</div>
+          <div class="wl-sub">${w.ageS}s · ${w.nTraders} traders · ${n(w.volSol, 1)} SOL</div>
+        </div>
+        <div class="wl-sc ${hot ? "" : "lo"}">${n(w.score, 2)}</div>
+      </div>`;
+    }).join("") || `<div class="empty">Nothing matches right now.</div>`;
+
+    document.querySelectorAll(".wl-item").forEach((el) =>
+      (el.onclick = () => selectCoin(el.dataset.mint)));
+
+    if (!selMint && watching.length) selectCoin(watching[0].mint);
+  } catch (e) {
+    // Never leave the rail on "Loading…" — say what went wrong instead.
+    $("#wl").innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+  }
+}
+
+async function selectCoin(mint) {
+  selMint = mint;
+  prevBars = [];  // a different coin is a different series
+  document.querySelectorAll(".wl-item").forEach((el) =>
+    el.setAttribute("aria-selected", String(el.dataset.mint === mint)));
+  await Promise.all([loadCoinDetail(mint), loadCandles(mint)]);
+}
+
+async function loadCoinDetail(mint) {
+  const d = await api(`/api/coin/${mint}`).catch(() => null);
+  if (!d || selMint !== mint) return;
+  const m = d.meta, pr = d.price || {};
+  const links = [
+    m.twitter ? `<a class="tag" href="${esc(m.twitter)}" target="_blank" rel="noopener">X</a>` : "",
+    m.website ? `<a class="tag" href="${esc(m.website)}" target="_blank" rel="noopener">site</a>` : "",
+    m.telegram ? `<a class="tag" href="${esc(m.telegram)}" target="_blank" rel="noopener">TG</a>` : "",
+  ].join(" ");
+  $("#chead").innerHTML = `${imgTag(m.image, "ph")}
+    <div style="min-width:0">
+      <div class="nm">${esc(m.symbol || mint.slice(0, 6))}</div>
+      <div class="mint" title="click to copy" data-copy="${esc(mint)}">${esc(mint.slice(0,6))}…${esc(mint.slice(-6))}</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">${links}</div>
+    <div class="px">
+      <b>${solPrice > 0 ? usd((+pr.px || 0) * SUPPLY * solPrice) : n((+pr.px || 0) * SUPPLY, 2) + " SOL"}</b>
+      <span>mcap · ${n((+pr.px || 0) * SUPPLY, 1)} SOL · ${n(pr.vol24, 0)} SOL 24h</span>
+    </div>`;
+  const mintEl = $("#chead .mint");
+  if (mintEl) mintEl.onclick = (e) => {
+    navigator.clipboard?.writeText(e.target.dataset.copy);
+    e.target.textContent = "copied";
+    setTimeout(() => loadCoinDetail(mint), 900);
+  };
+
+  // The agent's-eye view: exactly the columns a strategy filters on.
+  const l = (d.live || []).find((x) => +x.horizon_s === 60) || (d.live || [])[0];
+  $("#agentView").innerHTML = l ? [
+    ["Model score", n(l.model_score, 3), +l.model_score >= 0.4 ? "up" : ""],
+    ["Traders", l.n_traders, ""],
+    ["Trades", l.n_trades, ""],
+    ["Volume", n(l.vol_sol, 2) + " SOL", ""],
+    ["Buy ratio", n(l.buy_ratio * 100, 0) + "%", +l.buy_ratio > 0.5 ? "up" : "down"],
+    ["Fees paid", n(l.fees_sol, 4), ""],
+    ["Concentration", n(l.concentration * 100, 0) + "%", +l.concentration > 0.5 ? "down" : ""],
+    ["Dev sold", +l.dev_sold ? "yes" : "no", +l.dev_sold ? "down" : "up"],
+    ["Dev launches", l.dev_launch_count, +l.dev_launch_count > 0 ? "down" : "up"],
+    ["X link", l.twitter_kind, l.twitter_kind === "profile" ? "up" : ""],
+    ["AI verdict", l.llm_verdict || "unscored", l.llm_verdict === "strong" ? "up" : ""],
+    ["Age", l.age_now_s + "s", ""],
+  ].map(([k, v, c]) => `<div class="av"><div class="k">${k}</div><div class="v ${c}">${esc(String(v))}</div></div>`).join("")
+    : `<div class="av"><div class="k">No agent view</div><div class="v">—</div></div>`;
+
+  $("#coinTape").innerHTML = (d.trades || []).map((t) => `<tr>
+      <td><span class="tag ${t.isBuy ? "buy" : "sell"}">${t.isBuy ? "BUY" : "SELL"}</span></td>
+      <td class="num">${n(t.sol, 3)}</td>
+      <td class="num" style="color:var(--faint)">${(+t.px).toExponential(2)}</td>
+      <td class="num" style="color:var(--faint)">${esc(String(t.trader).slice(0,4))}…${esc(String(t.trader).slice(-4))}</td>
+      <td class="num" style="color:var(--faint)">${ago(new Date(+t.t).toISOString().replace("T"," ").slice(0,19))}</td>
+    </tr>`).join("") || `<tr><td colspan="5" class="empty">No trades.</td></tr>`;
+
+  $("#coinHolders").innerHTML = (d.holders || []).map((h) => {
+    const net = +h.bought - +h.sold;
+    return `<tr>
+      <td class="num">${esc(String(h.trader).slice(0,4))}…${esc(String(h.trader).slice(-4))}</td>
+      <td class="num up">${n(h.bought, 2)}</td>
+      <td class="num down">${n(h.sold, 2)}</td>
+      <td class="num ${cls(net)}">${n(net, 2)}</td>
+      <td class="num">${h.trades}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="empty">No holders.</td></tr>`;
+}
+
 // Ported from unretain/polyxmobile apps/web/src/components/charts/KLineChart.tsx.
 // That file targets klinecharts v10, whose API is setDataLoader / registerYAxis /
 // setSymbol / setPeriod — the v9 calls used here before (applyNewData +
