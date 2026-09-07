@@ -302,7 +302,7 @@
       <div class="glass step">
         <div class="stepn">1</div>
         <h4>We see every trade first</h4>
-        <p>The feed comes from our own Solana validator over Yellowstone gRPC — not a resold API.
+        <p>The feed comes from our own Solana validator over Yellowstone gRPC - not a resold API.
           That means every trade carries the <code>wallet</code> that made it, so agents can act on
           who is buying, not just how much.</p>
       </div>
@@ -310,28 +310,28 @@
         <div class="stepn">2</div>
         <h4>A coin is an episode</h4>
         <p>The median launch trades for <b>2 minutes</b> and sees <b>8 trades</b>. There is no chart
-          to hold. So every launch is stored as one <em>episode</em> — what was knowable in the first
+          to hold. So every launch is stored as one <em>episode</em> - what was knowable in the first
           30–180 seconds, and what happened afterwards.</p>
       </div>
       <div class="glass step">
         <div class="stepn">3</div>
         <h4>One model scores them all</h4>
         <p>A single model trained on every episode rates each launch 0–1 on whether it reaches
-          <code>+30%</code> before <code>−25%</code>. You don't train your own — you filter on its
+          <code>+30%</code> before <code>−25%</code>. You don't train your own - you filter on its
           score. One model fit on everything beats thousands fit on scraps.</p>
       </div>
       <div class="glass step">
         <div class="stepn">4</div>
         <h4>Your words become a config</h4>
         <p>An AI reads your sentence once and writes a validated config. It never runs at trade
-          time — what trades is deterministic code, so a backtest and a live run make
+          time - what trades is deterministic code, so a backtest and a live run make
           <b>identical decisions</b>.</p>
       </div>
       <div class="glass step">
         <div class="stepn">5</div>
         <h4>Backtest, then paper trade</h4>
         <p>Tested against every stored episode with real fees, bonding-curve slippage and
-          second-by-second exits. Then it runs live on paper money — same filter, same cost model,
+          second-by-second exits. Then it runs live on paper money - same filter, same cost model,
           same code.</p>
       </div>
       <div class="glass step">
@@ -358,7 +358,7 @@
       <div class="glass"><h3>What we won't pretend</h3><div class="body">
         <p style="margin:0 0 12px">No configuration tested here is profitable yet. The best still
           loses roughly <b>17% per trade</b> once fees and slippage are charged.</p>
-        <p class="hint" style="margin:0 0 12px">Filters move it from ×0.03 to ×0.83 — entry selection
+        <p class="hint" style="margin:0 0 12px">Filters move it from ×0.03 to ×0.83 - entry selection
           clearly works. The gap that remains is exits, and we would rather show you that than a
           number that flatters the product.</p>
         <p class="hint" style="margin:0">Every ambiguity in the backtester resolves <em>against</em>
@@ -397,7 +397,7 @@
   <!-- ══════════ TERMINAL ══════════ -->
   <section class="page" id="page-terminal">
     <h1>Terminal</h1>
-    <p class="sub">Every coin the agents are watching right now, ranked by the model — not by volume.
+    <p class="sub">Every coin the agents are watching right now, ranked by the model - not by volume.
       Click one to see its chart, its tape, who is actually in it, and exactly what the agents see.</p>
     <div class="term">
       <div class="glass">
@@ -441,7 +441,7 @@
 
   <section class="page" id="page-build">
     <h1>Build an agent</h1>
-    <p class="sub">Describe it in plain English. The AI writes the config once, when you save —
+    <p class="sub">Describe it in plain English. The AI writes the config once, when you save -
       what trades is that config, so a backtest and a live run make identical decisions.</p>
     <div class="grid gside">
       <div style="display:flex;flex-direction:column;gap:16px">
@@ -449,11 +449,11 @@
           <h4>Connect a wallet to build</h4>
           <p>Your agents are saved against your wallet so they follow you between
             devices and show up on the leaderboard under one identity.<br>
-            Signing proves you hold the key — it authorises no transaction and moves no funds.</p>
+            Signing proves you hold the key - it authorises no transaction and moves no funds.</p>
           <button id="gateConnect">Connect Phantom</button>
         </div></div>
         <div class="glass" id="buildForm"><div class="body">
-          <div class="steplbl">Step 1 — describe it</div>
+          <div class="steplbl">Step 1 - describe it</div>
           <textarea id="prompt" placeholder="Buy coins 60 seconds after launch that the model rates above 0.5, with a real X profile and at least 20 different traders. Take profit at 30%, stop out at 25%, trail 15%, never hold past 5 minutes."></textarea>
           <div class="row" style="margin-top:12px">
             <button id="compile">Compile with AI</button>
@@ -464,7 +464,7 @@
           <div class="presets" id="presets"></div>
         </div></div>
         <div class="glass" id="builder" hidden><div class="body">
-          <div class="steplbl">Step 2 — entry rules</div>
+          <div class="steplbl">Step 2 - entry rules</div>
           <div class="row" style="margin-bottom:13px">
             <input id="name" placeholder="Agent name" style="flex:1">
             <select id="horizon" style="width:auto;min-width:142px">
@@ -475,7 +475,7 @@
           </div>
           <div id="filters"></div>
           <button class="ghost sm" id="addFilter">+ condition</button>
-          <div class="steplbl" style="margin-top:22px">Step 3 — exits &amp; size</div>
+          <div class="steplbl" style="margin-top:22px">Step 3 - exits &amp; size</div>
           <div class="cols">
             <div><label class="f">Take profit %</label><input id="tp" type="number" value="30"></div>
             <div><label class="f">Stop loss %</label><input id="sl" type="number" value="25"></div>
@@ -504,7 +504,7 @@
 
   <section class="page" id="page-model">
     <h1>The base model</h1>
-    <p class="sub">One model trained on every episode, shared by everyone. You don't train your own —
+    <p class="sub">One model trained on every episode, shared by everyone. You don't train your own -
       you filter on its score.</p>
     <div id="modelBody"><div class="empty">Loading…</div></div>
   </section>
@@ -537,26 +537,44 @@ const api = async (p, o) => {
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
 };
-const n = (v, d = 2) => (v == null || Number.isNaN(+v) ? "—" : (+v).toFixed(d));
+const n = (v, d = 2) => (v == null || Number.isNaN(+v) ? "-" : (+v).toFixed(d));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 const cls = (v) => (v > 0 ? "up" : v < 0 ? "down" : "");
 const IMGSRC = "https://api.polyx.trade/img?u=";
-// Load the coin image straight from wherever it lives (ipfs.io, j7tracker,
-// twimg, the launchpad CDNs) and only fall back to the polyx proxy if that
-// fails. Direct is one less hop and does not depend on polyx being up; the
-// proxy still rescues hosts that block hotlinking or serve a bad content-type.
+const IPFS = "https://api.polyx.trade/ipfs/";
+
+/**
+ * Where to actually load a coin image from.
+ *
+ * "Direct from the source" does not work for IPFS: ipfs.io and dweb.link answer
+ * 403, pinata answers 429, cloudflare-ipfs is gone. Measured, not assumed. The
+ * box runs its own kubo node though, so a CID is rewritten to our gateway,
+ * which is one hop to hardware we own and has no rate limit.
+ *
+ * Everything else (twimg, j7tracker, the launchpad CDNs) is fetched straight
+ * from its host. The polyx /img proxy stays as the last resort, since it hedges
+ * across several gateways and can rescue a host that blocks hotlinking.
+ */
+function imgSources(url) {
+  if (!url) return [];
+  const cid = /\/ipfs\/([A-Za-z0-9]+)/.exec(url);
+  const out = cid ? [IPFS + cid[1]] : [url];
+  out.push(IMGSRC + encodeURIComponent(url));
+  return out;
+}
+
 function imgTag(url, cls) {
-  if (!url) return `<span class="${cls}"></span>`;
-  const direct = esc(url);
-  const proxied = IMGSRC + encodeURIComponent(url);
-  return `<img src="${direct}" alt="" loading="lazy" decoding="async" data-fb="${esc(proxied)}"
-    onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.dataset.fb='';}
+  const srcs = imgSources(url);
+  if (!srcs.length) return `<span class="${cls}"></span>`;
+  // Each failure steps to the next source; running out swaps in the placeholder
+  // so a dead image never shows a broken-file icon.
+  return `<img src="${esc(srcs[0])}" alt="" loading="lazy" decoding="async"
+    data-next="${esc(srcs.slice(1).join(" "))}"
+    onerror="var n=(this.dataset.next||'').split(' ').filter(Boolean);
+             if(n.length){this.dataset.next=n.slice(1).join(' ');this.src=n[0];}
              else{this.className='${cls}';this.removeAttribute('src');}">`;
 }
-const ago = (ts) => {
-  const s = Math.max(0, (Date.now() - Date.parse(String(ts).replace(" ", "T") + "Z")) / 1000);
-  return s < 60 ? `${s.toFixed(0)}s` : s < 3600 ? `${(s/60).toFixed(0)}m` : `${(s/3600).toFixed(0)}h`;
-};
+
 function coinHTML(r) {
   const label = esc(r.symbol || (r.mint || "").slice(0, 6));
   const pic = imgTag(r.image, "ph");
@@ -602,8 +620,8 @@ async function loadHome() {
     $("#homeStats").innerHTML =
       stat("Episodes", (+s.episodes||0).toLocaleString(), "", "launches on record") +
       stat("Coins", (+s.coins||0).toLocaleString(), "", "seen and stored") +
-      stat("Model AUC", m && m.trained ? n(m.auc,3) : "—", "up", "held out by time") +
-      stat("Top decile", m && m.trained ? n(m.top10_rate*100,1)+"%" : "—", "up",
+      stat("Model AUC", m && m.trained ? n(m.auc,3) : "-", "up", "held out by time") +
+      stat("Top decile", m && m.trained ? n(m.top10_rate*100,1)+"%" : "-", "up",
            m && m.trained ? `${n(m.top10_lift,2)}× base rate` : "") +
       stat("Latest data", String(s.newest||"").slice(5,16).replace(" ","  "), "", "UTC");
   } catch {}
@@ -663,11 +681,11 @@ async function tickPicks() {
       <td><span class="tag ${esc(p.twitterKind)}">${esc(p.twitterKind)}</span></td></tr>`).join("")
       || `<tr><td colspan="6" class="empty">No agent has matched in the last 15 minutes.</td></tr>`;
   } catch (e) {
-    // Never leave the panel on "Loading…" forever — a silent catch here is what
+    // Never leave the panel on "Loading…" forever - a silent catch here is what
     // made a failed fetch look identical to a quiet market.
     $("#pickDot").className = "dot";
     $("#pickBody").innerHTML =
-      `<tr><td colspan="6" class="empty">Could not load picks — ${esc(e.message)}</td></tr>`;
+      `<tr><td colspan="6" class="empty">Could not load picks - ${esc(e.message)}</td></tr>`;
   }
 }
 tickPicks(); setInterval(tickPicks, 6000);
@@ -771,7 +789,7 @@ function renderBT(r) {
       ${stat("Trades", r.nTrades.toLocaleString())}
       ${stat("Net PnL", n(r.totalPnlSol,2), cls(r.totalPnlSol), "SOL")}
     </div>
-    <p class="hint"><b>Per-trade</b> is the geometric mean — above ×1.000 is profitable after fees
+    <p class="hint"><b>Per-trade</b> is the geometric mean - above ×1.000 is profitable after fees
       and modelled slippage. Exits: ${esc(exits)}.</p>
     ${warn}
     <details><summary>Compiled filter</summary><pre>${esc(r.sql||"")}</pre></details>
@@ -813,7 +831,7 @@ async function loadModel() {
         <div class="glass"><h3>What it predicts</h3><div class="body">
           <p style="margin:0 0 13px">Probability a coin <b>${esc(m.label)}</b>.</p>
           <p class="hint">Trained on everything before ${esc(String(m.train_cutoff).slice(0,16))} and scored
-            on everything after. Split by time, never randomly — launches cluster by dev and by trend, so a
+            on everything after. Split by time, never randomly - launches cluster by dev and by trend, so a
             random split leaks near-duplicates across the boundary and reports an accuracy the live feed
             never delivers.</p>
           <div style="margin-top:16px"><table>
@@ -851,7 +869,7 @@ async function loadMine() {
   try {
     const rows = await api("/api/agents");
     const paper = await api("/api/paper").catch(() => null);
-    if (!rows.length) { $("#mineBody").innerHTML = `<div class="glass"><div class="empty">No agents yet — build one.</div></div>`; return; }
+    if (!rows.length) { $("#mineBody").innerHTML = `<div class="glass"><div class="empty">No agents yet - build one.</div></div>`; return; }
     const tot = paper ? `<div class="stats">
         ${stat("Total PnL", n(paper.realisedPnl+paper.unrealisedPnl,3), cls(paper.realisedPnl+paper.unrealisedPnl), "SOL, all agents")}
         ${stat("Realised", n(paper.realisedPnl,3), cls(paper.realisedPnl))}
@@ -867,12 +885,12 @@ async function loadMine() {
           <td title="${esc(r.thesis||"")}">${esc(r.name)}</td>
           <td>${r.run_status==="running"?'<span class="tag buy">live</span>'
               : r.run_status==="halted"?'<span class="tag sell">halted</span>'
-              : r.run_status?'<span class="tag">stopped</span>':'<span class="tag">—</span>'}</td>
-          <td class="num ${cls((+r.bt_geo||0)-1)}">${r.bt_geo!=null?"×"+n(r.bt_geo,3):"—"}</td>
-          <td class="num">${r.bt_trades ?? "—"}</td>
+              : r.run_status?'<span class="tag">stopped</span>':'<span class="tag">-</span>'}</td>
+          <td class="num ${cls((+r.bt_geo||0)-1)}">${r.bt_geo!=null?"×"+n(r.bt_geo,3):"-"}</td>
+          <td class="num">${r.bt_trades ?? "-"}</td>
           <td class="num ${cls(+r.paper_pnl)}">${n(r.paper_pnl,3)}</td>
           <td class="num">${r.paper_trades}</td>
-          <td class="num">${+r.paper_trades ? n(r.paper_win,1)+"%" : "—"}</td>
+          <td class="num">${+r.paper_trades ? n(r.paper_win,1)+"%" : "-"}</td>
           <td class="num">${r.paper_open}</td>
           <td>${r.run_id && r.run_status==="running"
               ? `<button class="ghost sm" data-stop="${esc(r.run_id)}">stop</button>`
@@ -970,7 +988,7 @@ async function loadTerminal() {
 
     if (!selMint && watching.length) selectCoin(watching[0].mint);
   } catch (e) {
-    // Never leave the rail on "Loading…" — say what went wrong instead.
+    // Never leave the rail on "Loading…" - say what went wrong instead.
     $("#wl").innerHTML = `<div class="note err">${esc(e.message)}</div>`;
   }
 }
@@ -1025,7 +1043,7 @@ async function loadCoinDetail(mint) {
     ["AI verdict", l.llm_verdict || "unscored", l.llm_verdict === "strong" ? "up" : ""],
     ["Age", l.age_now_s + "s", ""],
   ].map(([k, v, c]) => `<div class="av"><div class="k">${k}</div><div class="v ${c}">${esc(String(v))}</div></div>`).join("")
-    : `<div class="av"><div class="k">No agent view</div><div class="v">—</div></div>`;
+    : `<div class="av"><div class="k">No agent view</div><div class="v">-</div></div>`;
 
   $("#coinTape").innerHTML = (d.trades || []).map((t) => `<tr>
       <td><span class="tag ${t.isBuy ? "buy" : "sell"}">${t.isBuy ? "BUY" : "SELL"}</span></td>
@@ -1048,7 +1066,7 @@ async function loadCoinDetail(mint) {
 
 // Ported from unretain/polyxmobile apps/web/src/components/charts/KLineChart.tsx.
 // That file targets klinecharts v10, whose API is setDataLoader / registerYAxis /
-// setSymbol / setPeriod — the v9 calls used here before (applyNewData +
+// setSymbol / setPeriod - the v9 calls used here before (applyNewData +
 // setPriceVolumePrecision) silently did nothing useful, which is why the tooltip
 // read "Open: 32 High: 32 Low: 32": every value was rounded to 0 decimals.
 const UP = "#22c55e", DOWN = "#ef4444";
@@ -1167,7 +1185,7 @@ function initChart() {
  *   - a longer array with the same first timestamp is the live feed appending,
  *     and must be pushed bar-by-bar so the viewport is not reset under the user.
  *
- * Calling setPeriod with the period it already has — which is what this did —
+ * Calling setPeriod with the period it already has - which is what this did -
  * re-runs nothing, so the loader kept answering with the empty array it was
  * given at init. That is the hole in the chart.
  */
@@ -1190,7 +1208,7 @@ function applyBars(next) {
   if (!pushBar) { chart.resetData(); prevBars = next.slice(); return; }
   // Push the tail: the last bar we already showed may have been revised in
   // place (a still-open candle), and anything past it is new. `open` belongs in
-  // this comparison — a bar's open is rewritten when the one before it closes.
+  // this comparison - a bar's open is rewritten when the one before it closes.
   for (let i = Math.max(0, prev.length - 1); i < next.length; i++) {
     const b = next[i], o = prev[i];
     if (o && o.timestamp === b.timestamp && o.open === b.open && o.close === b.close &&
@@ -1217,7 +1235,7 @@ async function loadCandles(mint) {
 
   // Plotted as market cap, not raw price: a coin at 2.8e-8 SOL renders as a
   // flat line of zeros on any axis a human can read. USD when the SOL rate is
-  // known, SOL otherwise — never $0.00.
+  // known, SOL otherwise - never $0.00.
   const mult = SUPPLY * (solPrice || 1);
   bars = c.map((k) => ({
     timestamp: +k.t, open: +k.o * mult, high: +k.h * mult,
@@ -1275,7 +1293,7 @@ function renderFeatureTable() {
 
 // SOL price for the USD market-cap axis. Proxied by our own service because
 // polyx-api's feed/status needs the internal key, which must not reach a
-// browser — calling it directly returned 401 and left every market cap at $0.00.
+// browser - calling it directly returned 401 and left every market cap at $0.00.
 async function solTick() {
   try {
     const r = await api("/api/solprice");
@@ -1308,7 +1326,7 @@ function paintWallet() {
   if (wallet) {
     b.textContent = short(wallet);
     b.className = "wallet on";
-    b.title = wallet + " — click to disconnect";
+    b.title = wallet + " - click to disconnect";
   } else {
     b.textContent = "Connect wallet";
     b.className = "wallet";
