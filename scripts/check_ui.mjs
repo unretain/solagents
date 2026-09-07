@@ -23,7 +23,7 @@ import fs from "node:fs";
 
 const REQUIRED = [
   // helpers - `ago` is here because losing it silently emptied the trade feed
-  "$", "api", "n", "esc", "cls", "usd", "ago", "stat", "coinHTML", "imgTag", "imgSources",
+  "$", "api", "n", "esc", "cls", "usd", "ago", "stat", "coinHTML", "imgTag",
   // shell
   "show", "navStats", "loadHome",
   // live

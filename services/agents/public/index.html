@@ -540,44 +540,22 @@ const api = async (p, o) => {
 const n = (v, d = 2) => (v == null || Number.isNaN(+v) ? "-" : (+v).toFixed(d));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 const cls = (v) => (v > 0 ? "up" : v < 0 ? "down" : "");
-const IMGSRC = "https://api.polyx.trade/img?u=";
-const IPFS = "https://api.polyx.trade/ipfs/";
-
 /**
- * Where to actually load a coin image from.
- *
- * "Direct from the source" does not work for IPFS: ipfs.io and dweb.link answer
- * 403, pinata answers 429, cloudflare-ipfs is gone. Measured, not assumed. The
- * box runs its own kubo node though, so a CID is rewritten to our gateway,
- * which is one hop to hardware we own and has no rate limit.
- *
- * Everything else (twimg, j7tracker, the launchpad CDNs) is fetched straight
- * from its host. The polyx /img proxy stays as the last resort, since it hedges
- * across several gateways and can rescue a host that blocks hotlinking.
+ * All coin art is fetched through our own service, on the same path prefix as
+ * the API calls that demonstrably work. Loading it from ipfs.io, from the polyx
+ * /img proxy, or from our kubo node on another path all failed in the browser
+ * while returning valid image bytes to curl, so the host is removed as a
+ * variable rather than guessed at. The server handles gateway fallbacks.
  */
 const ago = (ts) => {
   const s = Math.max(0, (Date.now() - Date.parse(String(ts).replace(" ", "T") + "Z")) / 1000);
   return s < 60 ? `${s.toFixed(0)}s` : s < 3600 ? `${(s / 60).toFixed(0)}m` : `${(s / 3600).toFixed(0)}h`;
 };
 
-function imgSources(url) {
-  if (!url) return [];
-  const cid = /\/ipfs\/([A-Za-z0-9]+)/.exec(url);
-  const out = cid ? [IPFS + cid[1]] : [url];
-  out.push(IMGSRC + encodeURIComponent(url));
-  return out;
-}
-
 function imgTag(url, cls) {
-  const srcs = imgSources(url);
-  if (!srcs.length) return `<span class="${cls}"></span>`;
-  // Each failure steps to the next source; running out swaps in the placeholder
-  // so a dead image never shows a broken-file icon.
-  return `<img src="${esc(srcs[0])}" alt="" loading="lazy" decoding="async"
-    data-next="${esc(srcs.slice(1).join(" "))}"
-    onerror="var n=(this.dataset.next||'').split(' ').filter(Boolean);
-             if(n.length){this.dataset.next=n.slice(1).join(' ');this.src=n[0];}
-             else{this.className='${cls}';this.removeAttribute('src');}">`;
+  if (!url) return `<span class="${cls}"></span>`;
+  const src = BASE + "api/img?u=" + encodeURIComponent(url);
+  return `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" onerror="this.className='${cls}';this.removeAttribute('src')">`;
 }
 
 function coinHTML(r) {

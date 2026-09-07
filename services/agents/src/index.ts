@@ -11,6 +11,7 @@ import { livePicks, liveTape, publishedPicks, liveTrades, scanRate } from "./liv
 import { startPaperEngine } from "./paper.js";
 import { attach } from "./stream.js";
 import { coinDetail, candles, watchlist } from "./coin.js";
+import { serveImage } from "./img.js";
 import { issueNonce, messageFor, verifyWallet, readSession } from "./auth.js";
 import { memo, invalidate } from "./cache.js";
 import { TP_MULT, SL_MULT } from "./model/spec.js";
@@ -414,9 +415,13 @@ app.get("/api/coin/:mint/candles", async (req, res, next) => {
     const mint = String(req.params.mint);
     if (!MINT.test(mint)) return res.status(400).json({ error: "not a mint address" });
     const tf = String(req.query.tf || "1m");
-    res.json(await memo(`candles:${mint}:${tf}`, 3_000, () => candles(mint, tf)));
+    const sol = await solPrice();
+    res.json(await memo(`candles:${mint}:${tf}:${sol > 0}`, 3_000, () => candles(mint, tf, 300, sol)));
   } catch (e) { next(e); }
 });
+
+/** Coin art, proxied through our own prefix. See img.ts for why. */
+app.get("/api/img", serveImage);
 
 /** What the agents are watching — ranked by the model, not by volume. */
 app.get("/api/watchlist", async (_req, res, next) => {

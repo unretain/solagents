@@ -45,8 +45,8 @@ const INTERVALS: Record<string, number> = {
  * Capped, because filling 1-second gaps across a coin that went quiet for an
  * hour would generate 3,600 bars nobody can read.
  */
-function fillGaps(rows: Candle[], ivSec: number, maxBars = 600): Candle[] {
-  if (rows.length < 2) return rows;
+function fillGaps(rows: Candle[], ivSec: number, maxBars = 600, tailBars = 120): Candle[] {
+  if (!rows.length) return rows;
   const step = ivSec * 1000;
   const out: Candle[] = [];
   for (let i = 0; i < rows.length; i++) {
@@ -59,12 +59,40 @@ function fillGaps(rows: Candle[], ivSec: number, maxBars = 600): Candle[] {
     }
     out.push(cur);
   }
+
+  // Extend to the present. A coin that traded for 14 seconds and then went
+  // quiet for 14 minutes returned ONE bucket, which the chart drew as a single
+  // enormous candle filling the pane. Its price did not stop existing when the
+  // trading stopped, so the silence is drawn as flat bars.
+  //
+  // Bounded by tailBars rather than by "now", because at 1s an hour of silence
+  // is 3,600 bars and trimming to maxBars from the start would throw away the
+  // only interesting part - the trading - and leave a flat line.
+  const last = out[out.length - 1];
+  const nowMs = Date.now();
+  for (let t = last.t + step, added = 0; t <= nowMs && added < tailBars; t += step, added++) {
+    out.push({ t, o: last.c, h: last.c, l: last.c, c: last.c, v: 0 });
+  }
   return out.length > maxBars ? out.slice(out.length - maxBars) : out;
 }
 
-export async function candles(mint: string, tf = "1m", limit = 300): Promise<Candle[]> {
+/**
+ * Candles, already in USD.
+ *
+ * polyx-api's queries.ts converts server-side (`open_sol * p`) and hands the
+ * client dollars. Doing the multiply in the browser instead meant the chart
+ * rendered in SOL whenever the SOL price had not arrived yet, and the axis
+ * label flipped between units depending on a race. The rate is known here, so
+ * the conversion belongs here.
+ */
+export async function candles(
+  mint: string, tf = "1m", limit = 300, solUsd = 0,
+): Promise<Candle[]> {
   const iv = INTERVALS[tf] ?? 60;
   const m = lit(mint);
+  const p = solUsd > 0 ? solUsd : 1;   // fall back to SOL rather than to zero
+  const toUsd = (r: Candle[]): Candle[] =>
+    r.map((k) => ({ t: +k.t, o: +k.o * p, h: +k.h * p, l: +k.l * p, c: +k.c * p, v: +k.v * p }));
 
   if (iv < 60) {
     return chQuery<Candle>(`
@@ -77,7 +105,7 @@ export async function candles(mint: string, tf = "1m", limit = 300): Promise<Can
       FROM trades
       WHERE mint = ${m} AND price_sol > 0
       GROUP BY t ORDER BY t DESC LIMIT ${limit}
-      FORMAT JSON`).then((r) => fillGaps(r.reverse(), iv));
+      FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv));
   }
 
   return chQuery<Candle>(`
@@ -90,7 +118,7 @@ export async function candles(mint: string, tf = "1m", limit = 300): Promise<Can
     FROM candles_1m
     WHERE mint = ${m}
     GROUP BY t ORDER BY t DESC LIMIT ${limit}
-    FORMAT JSON`).then((r) => fillGaps(r.reverse(), iv));
+    FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv));
 }
 
 export async function coinDetail(mint: string): Promise<Record<string, unknown>> {
