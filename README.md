@@ -2,7 +2,7 @@
 
 ### Live: **https://api.polyx.trade/agents/**
 
-Runs on the bare-metal box (`88.216.198.213`) as `polyx-agents.service`, next to
+Runs on the bare-metal box (`$BOX_HOST`) as `polyx-agents.service`, next to
 the validator, ClickHouse and Postgres. There is no external hosting and nothing
 to deploy anywhere else — the data is on that machine and so is the app.
 
@@ -196,8 +196,8 @@ every request to the polyx feed API, which answers on the same host at the root.
 Deploy a change:
 
 ```bash
-scp services/agents/src/**  root@88.216.198.213:/opt/solagents/services/agents/src/
-ssh root@88.216.198.213 'cd /opt/solagents/services/agents && npx tsc -p tsconfig.json && systemctl restart polyx-agents'
+scp services/agents/src/**  root@$BOX_HOST:/opt/solagents/services/agents/src/
+ssh root@$BOX_HOST 'cd /opt/solagents/services/agents && npx tsc -p tsconfig.json && systemctl restart polyx-agents'
 ```
 
 ### Scheduled jobs (`/etc/cron.d/solagents`)

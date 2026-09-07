@@ -109,16 +109,22 @@ app.post("/api/auth/verify", (req, res) => {
   const out = verifyWallet(body.data);
   if (!out.ok) return res.status(401).json({ error: out.error });
 
+  // SameSite=None, because the page is served from one origin (Railway, or a
+  // custom domain) and the API answers from another. Lax cookies are withheld
+  // on cross-site requests, so the wallet session silently never arrived and
+  // every write looked like an anonymous caller. None requires Secure, which
+  // is satisfied - and the origin allowlist in cors.ts, not SameSite, is what
+  // limits who can make a credentialed call here.
   res.setHeader("Set-Cookie",
     `pl_session=${encodeURIComponent(out.token)}; Path=/; Max-Age=${30*24*3600}; ` +
-    `SameSite=Lax; HttpOnly; Secure`);
+    `SameSite=None; HttpOnly; Secure`);
   res.json({ ok: true, pubkey: body.data.pubkey });
 });
 
 app.get("/api/auth/me", (req, res) => res.json({ pubkey: sessionOf(req) }));
 
 app.post("/api/auth/logout", (_req, res) => {
-  res.setHeader("Set-Cookie", "pl_session=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly; Secure");
+  res.setHeader("Set-Cookie", "pl_session=; Path=/; Max-Age=0; SameSite=None; HttpOnly; Secure");
   res.json({ ok: true });
 });
 
@@ -163,6 +169,19 @@ const backtestBody = z.object({
   feeBps: z.number().min(0).max(2000).optional(),
 });
 
+/**
+ * Validate a hand-written config without saving it.
+ *
+ * The editor needs the SAME verdict the save path applies, or a config could
+ * pass in the editor and be rejected on save (or worse, the reverse). So this
+ * runs strategySchema - the one schema - and returns its own error text.
+ */
+app.post("/api/validate", (req, res) => {
+  const parsed = strategySchema.safeParse(z.object({ strategy: z.unknown() }).parse(req.body).strategy);
+  if (!parsed.success) return res.status(400).json({ ok: false, error: explainInvalid(parsed.error) });
+  res.json({ ok: true, strategy: parsed.data });
+});
+
 app.post("/api/backtest", async (req, res, next) => {
   try {
     const body = backtestBody.parse(req.body);
@@ -182,9 +201,14 @@ app.post("/api/strategies", async (req, res, next) => {
         strategy: z.unknown(),
         prompt: z.string().max(4000).default(""),
         isPublic: z.boolean().default(true),
-        ownerId: z.string().nullable().default(null),
       })
       .parse(req.body);
+    // The owner is the signed-in wallet and nothing else. This used to fall
+    // back to an `ownerId` sent in the body, so an unauthenticated caller could
+    // publish a strategy under any wallet they liked and have it rank as that
+    // person's on the leaderboard.
+    const owner = sessionOf(req);
+    if (!owner) return res.status(401).json({ error: "Connect a wallet to save a strategy." });
     const parsed = strategySchema.safeParse(body.strategy);
     if (!parsed.success) return res.status(400).json({ error: explainInvalid(parsed.error) });
 
@@ -193,7 +217,7 @@ app.post("/api/strategies", async (req, res, next) => {
     await q(
       `INSERT INTO sa_strategy (id, owner_id, name, thesis, prompt, config, is_public)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, sessionOf(req) ?? body.ownerId, s.name, s.thesis, body.prompt, JSON.stringify(s), body.isPublic],
+      [id, owner, s.name, s.thesis, body.prompt, JSON.stringify(s), body.isPublic],
     );
 
     // Backtest on publish, so the leaderboard is never populated by a strategy
@@ -440,8 +464,9 @@ app.post("/api/runs", async (req, res, next) => {
     const body = z.object({
       strategyId: z.string(),
       bankrollSol: z.number().positive().max(1000).default(10),
-      ownerId: z.string().nullable().default(null),
     }).parse(req.body);
+    const owner = sessionOf(req);
+    if (!owner) return res.status(401).json({ error: "Connect a wallet to start a run." });
 
     const [s] = await q<{ id: string }>(`SELECT id FROM sa_strategy WHERE id=$1`, [body.strategyId]);
     if (!s) return res.status(404).json({ error: "strategy not found" });
@@ -453,7 +478,7 @@ app.post("/api/runs", async (req, res, next) => {
     const id = newId("run");
     await q(
       `INSERT INTO sa_run (id, strategy_id, owner_id, mode, bankroll_sol) VALUES ($1,$2,$3,'paper',$4)`,
-      [id, body.strategyId, sessionOf(req) ?? body.ownerId, body.bankrollSol],
+      [id, body.strategyId, owner, body.bankrollSol],
     );
     invalidate("agents");
     res.json({ id, mode: "paper" });
@@ -462,8 +487,17 @@ app.post("/api/runs", async (req, res, next) => {
 
 app.post("/api/runs/:id/stop", async (req, res, next) => {
   try {
-    await q(`UPDATE sa_run SET status='stopped', stopped_at=now() WHERE id=$1 AND status='running'`,
-      [req.params.id]);
+    // Scoped to the owner. Without the owner_id predicate any caller who knew a
+    // run id - and ids are returned by the public leaderboard - could stop
+    // somebody else's agent.
+    const owner = sessionOf(req);
+    if (!owner) return res.status(401).json({ error: "Connect a wallet to stop a run." });
+    const done = await q(
+      `UPDATE sa_run SET status='stopped', stopped_at=now()
+        WHERE id=$1 AND owner_id=$2 AND status='running' RETURNING id`,
+      [req.params.id, owner],
+    );
+    if (!done.length) return res.status(404).json({ error: "No running agent of yours with that id." });
     invalidate("agents");
     res.json({ ok: true });
   } catch (e) { next(e); }

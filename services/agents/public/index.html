@@ -80,6 +80,16 @@
   .gate{padding:22px;text-align:center}
   .gate h4{margin:0 0 7px;font-size:16px;font-weight:600}
   .gate p{margin:0 0 16px;color:var(--faint);font-size:13px;line-height:1.55}
+  .carow{display:flex;justify-content:flex-end;margin:0 0 -6px}
+  .ca{display:flex;align-items:center;gap:8px;cursor:pointer;
+    background:var(--glass);border:1px solid var(--stroke);border-radius:9px;
+    padding:6px 11px;color:var(--dim);font-size:12.5px;transition:background .15s,color .15s}
+  .ca:hover{background:var(--glass-2);color:var(--ink)}
+  .ca.copied{background:var(--green-dim);border-color:hsl(142 76% 36% / .6);color:var(--green-lit)}
+  .calabel{font-weight:650;letter-spacing:.6px;font-size:10.5px;color:var(--faint)}
+  .ca.copied .calabel{color:inherit}
+  .caval{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;letter-spacing:-.2px}
+  @media(max-width:1100px){.ca .calabel{display:none}}
   @media(max-width:1000px){.navstats{display:none}.navlink{padding:7px 9px;font-size:13px}}
 
   .wrap{max-width:1360px;margin:0 auto;padding:34px 22px 90px}
@@ -274,6 +284,15 @@
 .scanread { font-size: 12.5px; line-height: 1.55; color: var(--faint); min-height: 54px; }
 .scanread b { color: var(--text); font-weight: 600; }
 .scanread .verdict { display: inline-block; margin-top: 7px; }
+
+#codeBox { width: 100%; min-height: 340px; resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; line-height: 1.6; tab-size: 2; white-space: pre; overflow-wrap: normal;
+  overflow-x: auto; color: var(--ink); background: rgba(0,0,0,.28);
+  border: 1px solid var(--stroke); border-radius: 12px; padding: 14px 16px; }
+#codeBox:focus { outline: none; border-color: hsl(142 76% 36% / .55); }
+#codeBox.bad { border-color: hsl(0 72% 55% / .65); }
+.tag.err { background: hsl(0 72% 55% / .14); color: #fca5a5; }
 </style>
 </head>
 <body>
@@ -295,6 +314,10 @@
 
   <!-- ══════════ OVERVIEW ══════════ -->
   <section class="page on" id="page-home">
+    <div class="carow">
+      <button class="ca" id="caPill" title="Click to copy the contract address">
+        <span class="calabel">CA:</span><span class="caval" id="caVal"></span></button>
+    </div>
     <div class="hero">
       <h2>Describe a trading strategy. <em>Watch it trade.</em></h2>
       <p>Pump Lab turns a sentence of English into a trading agent, tests it against every
@@ -304,6 +327,7 @@
         <button class="big" data-go="build">Build an agent</button>
         <button class="big ghost" data-go="live">Watch it live</button>
       </div>
+
     </div>
 
     <div class="stats" id="homeStats"></div>
@@ -460,12 +484,25 @@
             Signing proves you hold the key - it authorises no transaction and moves no funds.</p>
           <button id="gateConnect">Connect Phantom</button>
         </div></div>
+        <div class="glass" id="codePanel" style="display:none"><div class="body">
+          <div class="steplbl">Strategy config</div>
+          <p class="hint" style="margin:0 0 10px">The exact JSON that trades. Checked against the
+            same schema the AI output goes through, so nothing passes here that would fail on save.</p>
+          <textarea id="codeBox" spellcheck="false"></textarea>
+          <div class="row" style="margin-top:12px">
+            <button id="codeApply">Check and apply</button>
+            <button class="ghost" id="codeClose">Back</button>
+            <span class="tag" id="codeMsg" style="margin-left:auto"></span>
+          </div>
+        </div></div>
+
         <div class="glass" id="buildForm"><div class="body">
           <div class="steplbl">Step 1 - describe it</div>
           <textarea id="prompt" placeholder="Buy coins 60 seconds after launch that the model rates above 0.5, with a real X profile and at least 20 different traders. Take profit at 30%, stop out at 25%, trail 15%, never hold past 5 minutes."></textarea>
           <div class="row" style="margin-top:12px">
             <button id="compile">Compile with AI</button>
             <button class="ghost" id="manual">Build by hand</button>
+            <button class="ghost" id="editCode">Edit as code</button>
             <span class="tag" id="llmBadge" style="margin-left:auto"></span>
           </div>
           <div id="compileMsg"></div>
@@ -555,8 +592,11 @@ const BASE = location.hostname === "api.polyx.trade"
   ? location.pathname.replace(/[^/]*$/, "")
   : API_ORIGIN;
 const api = async (p, o) => {
+  // credentials: "include" is required for the session cookie to travel to the
+  // API's origin. Without it fetch sends no cookie cross-origin at all, so a
+  // connected wallet looked anonymous to every write route.
   const r = await fetch(BASE + String(p).replace(/^\//, ""),
-    { headers: { "Content-Type": "application/json" }, ...o });
+    { credentials: "include", headers: { "Content-Type": "application/json" }, ...o });
   const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
@@ -775,6 +815,64 @@ function write(s) {
   $("#tr").value = s.exit.trailing_stop_pct ?? ""; $("#hold").value = s.exit.max_hold_s;
   $("#size").value = s.sizing.value; $("#conc").value = s.sizing.max_concurrent;
 }
+/**
+ * Code editor for the config.
+ *
+ * A view onto the SAME state the form holds, not a parallel one: it opens on
+ * read() and applies through write(), so the two can never disagree about what
+ * would be saved. Validation goes to the server rather than being reimplemented
+ * here, because strategySchema carries refinements (op must suit the feature's
+ * kind, size must respect max_position_sol) that a copy in the browser would
+ * drift from the moment either side changed.
+ */
+function openCode() {
+  $("#builder").hidden = false;                     // read() needs the fields to exist
+  if (!$("#filters").children.length) $("#filters").appendChild(filterRow());
+  const strat = read();
+  strat.thesis = window.__thesis || strat.thesis || "";
+  $("#codeBox").value = JSON.stringify(strat, null, 2);
+  $("#codeBox").classList.remove("bad");
+  $("#codeMsg").textContent = ""; $("#codeMsg").className = "tag";
+  $("#codePanel").style.display = "";
+  $("#buildForm").style.display = "none";
+}
+function closeCode() {
+  $("#codePanel").style.display = "none";
+  $("#buildForm").style.display = "";
+}
+$("#editCode").onclick = openCode;
+$("#codeClose").onclick = closeCode;
+
+$("#codeApply").onclick = async () => {
+  const box = $("#codeBox"), msg = $("#codeMsg");
+  let parsed;
+  try {
+    parsed = JSON.parse(box.value);
+  } catch (e) {
+    // Point at the line, not just "invalid JSON" - the message carries a
+    // character offset that is useless on its own in a 40-line config.
+    const at = /position (\d+)/.exec(e.message);
+    const line = at ? box.value.slice(0, +at[1]).split("
+").length : null;
+    box.classList.add("bad");
+    msg.className = "tag err";
+    msg.textContent = line ? `Not valid JSON, line ${line}` : "Not valid JSON";
+    return;
+  }
+  msg.className = "tag"; msg.textContent = "Checking";
+  try {
+    const r = await api("/api/validate", { method: "POST", body: JSON.stringify({ strategy: parsed }) });
+    box.classList.remove("bad");
+    window.__thesis = r.strategy.thesis || "";
+    write(r.strategy);
+    msg.className = "tag profile"; msg.textContent = "Applied";
+    setTimeout(closeCode, 550);
+  } catch (e) {
+    box.classList.add("bad");
+    msg.className = "tag err"; msg.textContent = e.message;
+  }
+};
+
 $("#compile").onclick = async () => {
   const text = $("#prompt").value.trim(); if (!text) return;
   const b = $("#compile"); b.disabled = true; b.innerHTML = `<span class="spin"></span>Compiling`;
@@ -1396,6 +1494,39 @@ async function startScan() {
 }
 
 function stopScan() { clearInterval(scanRotTimer); clearInterval(scanTickTimer); }
+
+/**
+ * Contract address, click to copy.
+ *
+ * Shown in full rather than truncated: an address people are meant to verify
+ * before they spend money on it is worth the width, and a middle-elided address
+ * is exactly what an impostor token relies on going unread.
+ */
+const PUMPLAB_CA = "AyziF5pDv3GEFF6ij95mgZ7AP3VUxZV2DzNfESD9pump";
+
+function initCA() {
+  const pill = $("#caPill"), val = $("#caVal");
+  if (!pill || !val) return;
+  val.textContent = PUMPLAB_CA;
+  pill.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(PUMPLAB_CA);
+    } catch {
+      // clipboard is refused without a user gesture in some browsers, and over
+      // plain http everywhere; select it so a manual copy still works.
+      const r = document.createRange();
+      r.selectNodeContents(val);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    }
+    pill.classList.add("copied");
+    $("#caVal").textContent = "Copied";
+    setTimeout(() => {
+      pill.classList.remove("copied");
+      $("#caVal").textContent = PUMPLAB_CA;
+    }, 1200);
+  };
+}
+initCA();
 
 // ── BUILD: presets + feature reference ────────────────────────────
 const PRESETS = [

@@ -77,7 +77,24 @@ export function messageFor(nonce: string): string {
 }
 
 // ── sessions ──────────────────────────────────────────────────────
-const SECRET = process.env.AUTH_SECRET || process.env.INTERNAL_API_KEY || "dev-only-secret";
+/**
+ * Session signing key.
+ *
+ * There is deliberately no default. A fallback constant in a public repository
+ * is not a fallback, it is a published signing key: anyone could mint a session
+ * for any wallet and appear on the leaderboard as its owner. Development gets a
+ * random key per process instead, which costs a re-login on restart and cannot
+ * be known off the machine.
+ */
+const SECRET = (() => {
+  const configured = process.env.AUTH_SECRET || process.env.INTERNAL_API_KEY;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET (or INTERNAL_API_KEY) must be set in production");
+  }
+  console.warn("[auth] no AUTH_SECRET - using a random per-process key; sessions end on restart");
+  return randomBytes(32).toString("hex");
+})();
 const TTL_MS = 30 * 24 * 3600 * 1000;
 
 function sign(payload: string): string {

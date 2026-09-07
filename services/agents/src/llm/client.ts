@@ -59,6 +59,6 @@ export function llmStatus(): { configured: boolean; via: string; model: string }
   return {
     configured: llmConfigured(),
     via: viaOpenRouter ? "OpenRouter" : BASE_URL ? "custom gateway" : "Anthropic",
-    model: process.env.COMPILE_MODEL || "claude-opus-5",
+    model: process.env.COMPILE_MODEL || "claude-sonnet-5",
   };
 }

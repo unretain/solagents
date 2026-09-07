@@ -17,10 +17,18 @@ import { z } from "zod";
 import { FEATURES } from "../strategy/features.js";
 import { strategySchema, explainInvalid, type Strategy } from "../strategy/schema.js";
 
-/** Model for strategy compilation. Config, not code, so it can be changed
- *  without a deploy - but the default is the most capable model, because a
- *  misread strategy is a silent loss of the user's money. */
-const MODEL = modelId(process.env.COMPILE_MODEL || "claude-opus-5");
+/**
+ * Model for strategy compilation. Config, not code, so it can be changed
+ * without a deploy.
+ *
+ * Sonnet, not Opus: this is constrained extraction into a fixed schema with a
+ * validator and a repair round behind it, and Opus cost roughly ten times as
+ * much for the same config. Not Haiku either - asked for "at least 5 buys and
+ * at least 0.001 fees paid" it returned only the fees condition and dropped the
+ * other one silently, which is worse than an expensive answer. Sonnet gets both,
+ * and distinguishes "5 buys" (n_trades) from "5 diff buyers" (n_buyers).
+ */
+const MODEL = modelId(process.env.COMPILE_MODEL || "claude-sonnet-5");
 
 /**
  * A LOOSE mirror of the strategy shape.
