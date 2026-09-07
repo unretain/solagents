@@ -42,6 +42,34 @@ app.use(express.static(path.join(here, "../public"), { maxAge: "1h" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+/**
+ * SOL price, proxied.
+ *
+ * polyx-api's /api/feed/status requires the internal key, which must never
+ * reach the browser — so the page cannot call it directly, and asking it to was
+ * why the terminal rendered every market cap as $0.00. Fetched here with the
+ * key server-side and re-exposed as a single number.
+ */
+async function solPrice(): Promise<number> {
+  return memo("solprice", 30_000, async () => {
+    const key = process.env.INTERNAL_API_KEY || "";
+    const url = process.env.POLYX_API_URL || "http://127.0.0.1:3001";
+    try {
+      const r = await fetch(`${url}/api/feed/status`, {
+        headers: key ? { "x-internal-api-key": key } : {},
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!r.ok) return 0;
+      const j = (await r.json()) as { solPrice?: number };
+      return Number(j.solPrice) || 0;
+    } catch { return 0; }
+  });
+}
+
+app.get("/api/solprice", async (_req, res, next) => {
+  try { res.json({ solPrice: await solPrice() }); } catch (e) { next(e); }
+});
+
 // ─────────────────────────── wallet auth ─────────────────────────
 
 function sessionOf(req: express.Request): string | null {
@@ -491,7 +519,7 @@ app.get("/api/paper", async (_req, res, next) => {
  */
 app.get("/api/bootstrap", async (_req, res, next) => {
   try {
-    const [stats, model, agents, paper, board, picks, trades, watching] = await Promise.all([
+    const [stats, model, agents, paper, board, picks, trades, watching, sol] = await Promise.all([
       memo("stats", 15_000, async () => {
         const [row] = await chQuery<Record<string, string>>(`
           SELECT
@@ -509,10 +537,11 @@ app.get("/api/bootstrap", async (_req, res, next) => {
       memo("picks", 5_000, pickRows),
       memo("trades", 3_000, async () => ({ trades: await liveTrades(60), rate: await scanRate() })),
       memo("watchlist", 5_000, () => watchlist()),
+      solPrice(),
     ]);
 
     res.json({
-      stats, model, agents, paper, board, picks, watching,
+      stats, model, agents, paper, board, picks, watching, solPrice: sol,
       trades: trades.trades, rate: trades.rate,
       features: Object.entries(FEATURES).map(([name, def]) => ({
         name, kind: def.kind, doc: def.doc,

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pump Lab</title>
 <meta name="description" content="Train trading agents on live Solana data.">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://api.polyx.trade" crossorigin>
@@ -60,8 +62,8 @@
   /* MATLAB sets its wordmark in a Times face with a large cap and small caps
      after it. font-variant small-caps reproduces that without a custom font. */
   .brand .wm{font-variant:small-caps;padding-top:2px}
-  .mark{width:30px;height:26px;flex:0 0 auto;display:block;
-    filter:drop-shadow(0 0 12px hsl(142 76% 40% / .38))}
+  .mark{width:34px;height:30px;flex:0 0 auto;display:block;object-fit:contain;
+    filter:drop-shadow(0 0 13px hsl(142 76% 45% / .42))}
   .navlink{padding:7px 13px;border-radius:9px;color:var(--dim);font-size:13.5px;font-weight:500;
     cursor:pointer;transition:.16s;border:1px solid transparent;white-space:nowrap}
   .navlink:hover{color:var(--ink);background:var(--glass-2)}
@@ -246,9 +248,6 @@
 
   /* ── overview ─────────────────────────────────────── */
   .hero{padding:56px 0 40px;max-width:820px}
-  .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:5px 13px;border-radius:99px;
-    background:var(--green-dim);border:1px solid hsl(142 76% 36% / .3);color:var(--green-lit);
-    font-size:12px;font-weight:600;margin-bottom:22px}
   .hero h2{margin:0 0 18px;font-size:clamp(38px,5.4vw,62px);font-weight:600;line-height:1.03;
     letter-spacing:-.045em}
   .hero h2 em{font-style:normal;color:var(--green-lit)}
@@ -269,32 +268,7 @@
 <body>
 
 <nav class="nav">
-  <div class="brand" data-page="home"><svg class="mark" viewBox="0 0 64 56" aria-hidden="true">
-      <defs>
-        <linearGradient id="mA" x1="14%" y1="0%" x2="86%" y2="100%">
-          <stop offset="0%" stop-color="#7ef2a0"/><stop offset="42%" stop-color="#22c55e"/>
-          <stop offset="100%" stop-color="#0d7a2c"/>
-        </linearGradient>
-        <linearGradient id="mB" x1="0%" y1="30%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#effef4"/><stop offset="100%" stop-color="#57d97f"/>
-        </linearGradient>
-        <linearGradient id="mC" x1="50%" y1="0%" x2="50%" y2="100%">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity=".85"/>
-          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-        </linearGradient>
-      </defs>
-      <!-- the flat skirt folding away to the left -->
-      <path d="M2 40 L22 28 L30 34 L14 47 Z" fill="url(#mB)" opacity=".92"/>
-      <!-- the secondary lobe behind the peak -->
-      <path d="M22 28 C27 16 30 14 34 18 C37 21 36 28 33 34 C30 39 25 38 22 28 Z"
-            fill="#1aa34a" opacity=".95"/>
-      <!-- the main peak -->
-      <path d="M14 47 C22 44 30 30 36 14 C39 6 44 5 47 13 C51 24 54 40 62 50
-               C54 47 47 40 43 34 C38 40 30 47 14 47 Z" fill="url(#mA)"/>
-      <!-- specular ridge -->
-      <path d="M40 12 C42 7 45 7 46 12 C48 22 50 32 54 40 C48 32 44 22 40 12 Z"
-            fill="url(#mC)"/>
-    </svg><span class="wm">Pump Lab</span></div>
+  <div class="brand" data-page="home"><img class="mark" src="logo.png" alt="" width="34" height="30"><span class="wm">Pump Lab</span></div>
   <div class="navlink" data-page="home" aria-current="page">Overview</div>
   <div class="navlink" data-page="live">Live</div>
   <div class="navlink" data-page="terminal">Terminal</div>
@@ -311,7 +285,6 @@
   <!-- ══════════ OVERVIEW ══════════ -->
   <section class="page on" id="page-home">
     <div class="hero">
-      <div class="eyebrow"><span class="dot on"></span> Reading the chain from our own validator</div>
       <h2>Describe a trading strategy. <em>Watch it trade.</em></h2>
       <p>Pump Lab turns a sentence of English into a trading agent, tests it against every
         Solana memecoin launch we have on record, then runs it live on paper money and ranks it
@@ -1054,7 +1027,7 @@ async function loadCoinDetail(mint) {
     </div>
     <div style="display:flex;gap:6px;align-items:center">${links}</div>
     <div class="px">
-      <b>${usd((+pr.px || 0) * SUPPLY * solPrice)}</b>
+      <b>${solPrice > 0 ? usd((+pr.px || 0) * SUPPLY * solPrice) : n((+pr.px||0) * SUPPLY, 2) + " SOL"}</b>
       <span>mcap · ${n((+pr.px||0) * SUPPLY, 1)} SOL · ${n(pr.vol24,0)} SOL 24h</span>
     </div>`;
   $("#chead .mint").onclick = (e) => {
@@ -1159,13 +1132,22 @@ function renderFeatureTable() {
   </tr>`).join("");
 }
 
-// keep the SOL price fresh for the USD market-cap axis
+// SOL price for the USD market-cap axis. Proxied by our own service because
+// polyx-api's feed/status needs the internal key, which must not reach a
+// browser — calling it directly returned 401 and left every market cap at $0.00.
 async function solTick() {
   try {
-    const r = await fetch("https://api.polyx.trade/api/feed/status").then((x) => x.json());
-    if (r && r.solPrice) solPrice = +r.solPrice;
+    const r = await api("/api/solprice");
+    if (r && +r.solPrice > 0) {
+      const first = solPrice === 0;
+      solPrice = +r.solPrice;
+      // The chart is drawn in USD, so redraw once the rate finally arrives.
+      if (first && selMint) { loadCandles(selMint); loadCoinDetail(selMint); }
+    }
   } catch {}
 }
+solTick();
+setInterval(solTick, 30000);
 
 
 // ── PHANTOM WALLET ────────────────────────────────────────────────
