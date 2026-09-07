@@ -40,6 +40,35 @@ const REQUIRED = [
 ];
 
 const file = process.argv[2] ?? "services/agents/public/index.html";
+
+/**
+ * Parse the page's module script.
+ *
+ * This checker matched NAMES and ids for months and never once parsed the code,
+ * so an edit that produced an unterminated string literal passed it and shipped
+ * a page that ran nothing at all. A symbol list cannot catch a syntax error;
+ * only a parser can. `node --check` on a .mjs gets module semantics, so
+ * top-level await reads as valid rather than as a false alarm.
+ */
+async function syntaxCheck(src, lineOffset) {
+  const { writeFileSync, mkdtempSync } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const f = join(mkdtempSync(join(tmpdir(), "uicheck-")), "page.mjs");
+  writeFileSync(f, src);
+  try {
+    execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
+  } catch (e) {
+    const out = String(e.stderr || e.stdout || e.message);
+    const m = /page\.mjs:(\d+)/.exec(out);
+    const where = m ? `  (index.html line ${Number(m[1]) + lineOffset})` : "";
+    console.error(`ui check FAILED - the page does not parse:${where}`);
+    console.error(out.split("\n").slice(0, 8).join("\n"));
+    process.exit(1);
+  }
+}
+
 const html = fs.readFileSync(file, "utf8");
 const m = html.match(/<script type="module">([\s\S]*?)<\/script>/);
 if (!m) {
@@ -47,6 +76,10 @@ if (!m) {
   process.exit(1);
 }
 const src = m[1];
+
+// Parse first. Every check below is about the CONTENT of code that runs;
+// none of it means anything if the file does not parse.
+await syntaxCheck(src, html.slice(0, m.index).split("\n").length);
 
 // `$` is a real identifier here (the querySelector helper) and also a regex
 // metacharacter, so names are escaped before being built into a pattern.

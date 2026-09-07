@@ -878,8 +878,7 @@ $("#codeApply").onclick = async () => {
     // Point at the line, not just "invalid JSON" - the message carries a
     // character offset that is useless on its own in a 40-line config.
     const at = /position (\d+)/.exec(e.message);
-    const line = at ? box.value.slice(0, +at[1]).split("
-").length : null;
+    const line = at ? box.value.slice(0, +at[1]).split("\n").length : null;
     box.classList.add("bad");
     msg.className = "tag err";
     msg.textContent = line ? `Not valid JSON, line ${line}` : "Not valid JSON";
