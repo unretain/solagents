@@ -69,6 +69,55 @@ async function syntaxCheck(src, lineOffset) {
   }
 }
 
+const NL = String.fromCharCode(10);
+
+/**
+ * Balance the container tags.
+ *
+ * An extra </div> in the home page closed .wrap early, so every section after
+ * Overview escaped the 1360px container and rendered at full window width -
+ * the leaderboard ran off the right edge and the page scrolled sideways. The
+ * browser does not complain about this; it silently reparents everything.
+ *
+ * Only div and section are tracked. They are the ones the layout depends on,
+ * and they are always explicitly closed here, so a mismatch is a real fault
+ * rather than a void element or an optional end tag.
+ */
+function structureCheck(html) {
+  const start = html.indexOf('<div class="wrap">');
+  if (start < 0) return;
+  const end = html.indexOf('<script type="module">');
+  const body = html.slice(start, end);
+  const before = html.slice(0, start).split(NL).length;
+  const re = /<(\/?)(div|section)\b[^>]*?(\/?)>/g;
+  let m, depth = 0, closedAt = 0;
+  while ((m = re.exec(body))) {
+    if (m[3] === '/') continue;
+    depth += m[1] ? -1 : 1;
+    if (depth === 0 && !closedAt) {
+      closedAt = before + body.slice(0, m.index).split(NL).length - 1;
+    }
+    if (depth < 0) {
+      const ln = before + body.slice(0, m.index).split(NL).length - 1;
+      console.error(`ui check FAILED - unbalanced </${m[2]}> at index.html line ${ln}`);
+      process.exit(1);
+    }
+  }
+  if (depth !== 0) {
+    console.error(`ui check FAILED - ${depth} container tag(s) left open in index.html`);
+    process.exit(1);
+  }
+  const last = [...body.matchAll(/<section[^>]*id="page-[a-z]+"/g)].pop();
+  if (last && closedAt) {
+    const lastLn = before + body.slice(0, last.index).split(NL).length - 1;
+    if (closedAt < lastLn) {
+      console.error(`ui check FAILED - .wrap closes at line ${closedAt}, before the last page section at ${lastLn}`);
+      console.error('  sections after that point render outside the container, full window width');
+      process.exit(1);
+    }
+  }
+}
+
 const html = fs.readFileSync(file, "utf8");
 const m = html.match(/<script type="module">([\s\S]*?)<\/script>/);
 if (!m) {
@@ -79,6 +128,7 @@ const src = m[1];
 
 // Parse first. Every check below is about the CONTENT of code that runs;
 // none of it means anything if the file does not parse.
+structureCheck(html);
 await syntaxCheck(src, html.slice(0, m.index).split("\n").length);
 
 // `$` is a real identifier here (the querySelector helper) and also a regex
