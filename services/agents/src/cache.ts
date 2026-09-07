@@ -41,7 +41,7 @@ export async function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>):
   return p;
 }
 
-/** Drop a key so the next read recomputes — used after a write. */
+/** Drop a key so the next read recomputes - used after a write. */
 export function invalidate(prefix: string): void {
   for (const k of store.keys()) if (k.startsWith(prefix)) store.delete(k);
 }

@@ -17,6 +17,8 @@ import { memo, invalidate } from "./cache.js";
 import { TP_MULT, SL_MULT } from "./model/spec.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
+import { llmStatus } from "./llm/client.js";
+import { cors } from "./cors.js";
 import { runBacktest } from "./backtest/run.js";
 import { q, newId, migrate, describeError } from "./db.js";
 import { chQuery } from "./clickhouse.js";
@@ -30,7 +32,7 @@ const app = express();
 app.use(express.json({ limit: "256kb" }));
 app.use(compression({
   // SSE must never be buffered by the compressor, or events sit in a gzip
-  // window until it flushes and the "live" feed arrives in clumps — the exact
+  // window until it flushes and the "live" feed arrives in clumps - the exact
   // problem the stream exists to remove.
   filter: (req, res) =>
     String(res.getHeader("Content-Type") || "").includes("text/event-stream")
@@ -41,8 +43,9 @@ app.use(compression({
 const here = path.dirname(fileURLToPath(import.meta.url));
 // HTML must never be cached: a one-hour max-age on index.html meant every deploy
 // took an hour to reach anyone already carrying a copy, and made fixes look like
-// they had not been made. Immutable assets (logo, favicon) still cache — they
+// they had not been made. Immutable assets (logo, favicon) still cache - they
 // are only re-fetched when their bytes change, which ETag handles.
+app.use(cors);
 app.use(express.static(path.join(here, "../public"), {
   maxAge: "7d",
   setHeaders: (res, filePath) => {
@@ -58,7 +61,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
  * SOL price, proxied.
  *
  * polyx-api's /api/feed/status requires the internal key, which must never
- * reach the browser — so the page cannot call it directly, and asking it to was
+ * reach the browser - so the page cannot call it directly, and asking it to was
  * why the terminal rendered every market cap as $0.00. Fetched here with the
  * key server-side and re-exposed as a single number.
  */
@@ -119,7 +122,7 @@ app.post("/api/auth/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
-/** The feature catalogue drives the UI's filter builder — the UI never hardcodes
+/** The feature catalogue drives the UI's filter builder - the UI never hardcodes
  *  a feature list, so adding one to features.ts makes it appear on the site. */
 app.get("/api/features", (_req, res) => {
   res.json(
@@ -282,7 +285,7 @@ app.get("/api/leaderboard", async (req, res, next) => {
 /** Live trade stream. One tailer fans out to every connected browser. */
 app.get("/api/live/stream", (_req, res) => attach(res));
 
-/** Raw firehose snapshot — fills the table before the stream's first events. */
+/** Raw firehose snapshot - fills the table before the stream's first events. */
 app.get("/api/live/trades", async (_req, res, next) => {
   try {
     res.json(await memo("trades", 3_000, async () => ({
@@ -297,7 +300,7 @@ app.get("/api/live/tape", async (_req, res, next) => {
   try { res.json(await memo("tape", 5_000, () => liveTape())); } catch (e) { next(e); }
 });
 
-/** Live matches for a draft strategy the user has not saved yet. Not cached —
+/** Live matches for a draft strategy the user has not saved yet. Not cached -
  *  the whole point is to reflect the config currently on screen. */
 app.post("/api/live/test", async (req, res, next) => {
   try {
@@ -313,7 +316,7 @@ async function pickRows(): Promise<unknown[]> {
   return publishedPicks(rows);
 }
 
-/** Live picks across every published strategy — the public board. */
+/** Live picks across every published strategy - the public board. */
 app.get("/api/live/picks", async (_req, res, next) => {
   try { res.json(await memo("picks", 5_000, pickRows)); } catch (e) { next(e); }
 });
@@ -324,7 +327,7 @@ app.get("/api/live/picks", async (_req, res, next) => {
  * The base model card: what it predicts, how well, and what it learned.
  *
  * Calibration is recomputed against held-out episodes rather than stored, so the
- * page shows how the model does on data it has never seen — the only version of
+ * page shows how the model does on data it has never seen - the only version of
  * that number worth showing anyone. It is also the most expensive read on the
  * dashboard, hence the 2-minute memo: it changes only when the model is
  * retrained, which is nightly.
@@ -423,7 +426,7 @@ app.get("/api/coin/:mint/candles", async (req, res, next) => {
 /** Coin art, proxied through our own prefix. See img.ts for why. */
 app.get("/api/img", serveImage);
 
-/** What the agents are watching — ranked by the model, not by volume. */
+/** What the agents are watching - ranked by the model, not by volume. */
 app.get("/api/watchlist", async (_req, res, next) => {
   try { res.json(await memo("watchlist", 5_000, () => watchlist())); } catch (e) { next(e); }
 });
@@ -441,7 +444,7 @@ app.post("/api/runs", async (req, res, next) => {
     if (!s) return res.status(404).json({ error: "strategy not found" });
 
     // Live mode is not reachable from the API yet. The engine, the fills table
-    // and the leaderboard all handle it, but nothing signs a transaction — so
+    // and the leaderboard all handle it, but nothing signs a transaction - so
     // the endpoint refuses rather than quietly opening a "live" run that is
     // actually paper and would rank alongside real ones.
     const id = newId("run");
@@ -526,7 +529,7 @@ app.get("/api/paper", async (_req, res, next) => {
  * Everything the dashboard needs, in ONE round trip.
  *
  * The UI used to fetch stats, features, model, agents, paper, picks and the
- * leaderboard separately, each on its own page-switch — so every navigation
+ * leaderboard separately, each on its own page-switch - so every navigation
  * showed "Loading…". One call, fetched once at boot and refreshed in the
  * background, means switching pages is a local render with nothing to wait for.
  *
@@ -563,6 +566,7 @@ app.get("/api/bootstrap", async (_req, res, next) => {
         name, kind: def.kind, doc: def.doc,
         values: (def as { values?: readonly string[] }).values ?? null,
       })),
+      llm: llmStatus(),
       serverTime: new Date().toISOString(),
     });
   } catch (e) { next(e); }

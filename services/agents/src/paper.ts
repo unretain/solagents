@@ -80,7 +80,7 @@ async function openPositions(run: RunRow): Promise<number> {
 
   // Candidates: live matches this run has never traded. The freshness bound is
   // tight (120s past the horizon) because a paper run must enter at roughly the
-  // moment the strategy fires — entering a 30-minute-old match would record a
+  // moment the strategy fires - entering a 30-minute-old match would record a
   // fill the backtest would never have taken.
   // live_snapshot, not live_episodes: the view behind it scans `trades` four
   // times per evaluation (~100M rows), and running that once per run every 5s
@@ -160,7 +160,7 @@ async function markAndClose(): Promise<number> {
 
     // Same adverse-first ordering AND the same fill rule as the backtester:
     // the worse of the trigger level and the observed price. Closing at the
-    // observed price on a take-profit books the whole gap between two 5s ticks —
+    // observed price on a take-profit books the whole gap between two 5s ticks -
     // that recorded a +84% net fill on a 30% take-profit here, which no resting
     // order would ever have earned. Keeping the two engines in step matters more
     // than either individual choice.

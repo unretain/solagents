@@ -34,7 +34,7 @@ export interface BacktestResult {
   winPct: number;
   totalPnlSol: number;
   avgPnlSol: number;
-  /** geometric mean multiple per trade — the number that actually compounds */
+  /** geometric mean multiple per trade - the number that actually compounds */
   geoMult: number;
   medianMult: number;
   maxDrawdownSol: number;
@@ -65,7 +65,7 @@ export async function runBacktest(
   if (from < "2026-09-04" && usesSocials(s)) {
     warnings.push(
       "Window starts before 2026-09-04, when socials capture began. Twitter features " +
-        "read as 'none' for earlier episodes — results before that date are not meaningful.",
+        "read as 'none' for earlier episodes - results before that date are not meaningful.",
     );
   }
 
@@ -74,8 +74,8 @@ export async function runBacktest(
     SELECT e.mint AS mint, e.symbol AS symbol, toString(e.t0) AS t0,
            e.px_at_h AS px_at_h, e.real_sol_at_h AS real_sol_at_h, e.vol_sol AS vol_sol,
            ifNull(p.ks, []) AS ks, ifNull(p.pxs, []) AS pxs,
-           -- Distinguishes "no path row" (never extracted — unjudgeable) from an
-           -- empty path (extracted, nobody traded it again — a real total loss).
+           -- Distinguishes "no path row" (never extracted - unjudgeable) from an
+           -- empty path (extracted, nobody traded it again - a real total loss).
            p.mint != '' AS has_path
     FROM episodes_enriched AS e
     -- FINAL: without it a re-extracted window leaves duplicate path rows, and the
@@ -153,7 +153,7 @@ export async function runBacktest(
   if (skippedNoPath > 0) {
     warnings.push(
       `${skippedNoPath} matching episodes were skipped because their price paths have not been ` +
-        "extracted yet. This result covers only the remainder — re-run once the backfill completes.",
+        "extracted yet. This result covers only the remainder - re-run once the backfill completes.",
     );
   }
   const unknownDepth = trades.length

@@ -15,7 +15,7 @@ function pgUrl(): string {
     u.searchParams.delete("connection_limit");
     // sslmode is stripped and re-applied via the explicit `ssl` option below.
     // pg-connection-string currently treats sslmode=require as verify-full, and
-    // whatever it derives from the URL OVERRIDES the ssl object passed to Pool —
+    // whatever it derives from the URL OVERRIDES the ssl object passed to Pool -
     // so leaving it in makes the connection fail against the box's self-signed
     // certificate no matter what the code says.
     u.searchParams.delete("sslmode");
@@ -38,7 +38,7 @@ function requestedSslMode(): string {
  * The box's Postgres presents Ubuntu's self-signed ("snakeoil") certificate, so
  * the chain cannot be verified and `rejectUnauthorized: true` would refuse every
  * connection. The traffic is still encrypted, and auth is scram-sha-256, which
- * never puts the password on the wire even to a machine-in-the-middle — so the
+ * never puts the password on the wire even to a machine-in-the-middle - so the
  * exposure here is confidentiality of query data, not credential theft.
  *
  * Local connections skip TLS entirely: the socket never leaves the machine, and
@@ -59,8 +59,8 @@ export const pool = new Pool({ connectionString: CONN, max: 8, ssl: sslConfig(CO
 /**
  * Readable text for an unknown thrown value.
  *
- * AggregateError — what Node produces when a dual-stack connect fails on both
- * IPv4 and IPv6 — carries an EMPTY `.message` and hides the real reason in
+ * AggregateError - what Node produces when a dual-stack connect fails on both
+ * IPv4 and IPv6 - carries an EMPTY `.message` and hides the real reason in
  * `.errors`. Logging `(e as Error).message` on one of those prints nothing at
  * all, which is exactly how a dead database looked in production.
  */
@@ -93,7 +93,7 @@ export function newId(prefix: string): string {
  *
  * Every statement is CREATE ... IF NOT EXISTS or ADD COLUMN IF NOT EXISTS, so
  * this is idempotent and safe to run on every deploy. It exists so a fresh
- * Railway Postgres works without a manual psql step — the failure it prevents is
+ * Railway Postgres works without a manual psql step - the failure it prevents is
  * a deploy that boots green and then 500s on the first request.
  */
 export async function migrate(): Promise<void> {
@@ -103,7 +103,7 @@ export async function migrate(): Promise<void> {
   // An empty connection string does NOT fail loudly on its own: node-postgres
   // falls back to libpq defaults and dials localhost:5432, which in a container
   // produces ECONNREFUSED wrapped in an AggregateError whose `.message` is the
-  // empty string — printing literally nothing. Check it explicitly.
+  // empty string - printing literally nothing. Check it explicitly.
   if (!(process.env.DATABASE_URL || "").trim()) {
     throw new Error(
       "DATABASE_URL is not set. On Railway: add the Postgres database to the " +
@@ -127,7 +127,7 @@ export async function migrate(): Promise<void> {
   for (const f of ["01_schema.sql", "02_paper.sql", "03_model.sql"]) {
     const path = `${dir}/${f}`;
     if (!existsSync(path)) {
-      console.warn(`[db] ${path} not found — skipping migration`);
+      console.warn(`[db] ${path} not found - skipping migration`);
       continue;
     }
     try {

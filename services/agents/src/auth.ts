@@ -6,7 +6,7 @@
  *   2. wallet signs it
  *   3. server verifies the ed25519 signature against the claimed pubkey
  *
- * The nonce is what stops a replay — without it, a signature captured once
+ * The nonce is what stops a replay - without it, a signature captured once
  * could be resent forever. It is single-use and expires in two minutes.
  *
  * No dependency is added for any of this. Node verifies ed25519 natively once
@@ -72,7 +72,7 @@ function burnNonce(nonce: string): boolean {
 
 export function messageFor(nonce: string): string {
   // Shown verbatim in the Phantom prompt, so it has to read like a sentence a
-  // person can consent to — not an opaque blob.
+  // person can consent to - not an opaque blob.
   return `Sign in to Pump Lab.\n\nThis proves you own this wallet. It authorises no transaction and moves no funds.\n\nNonce: ${nonce}`;
 }
 
@@ -84,7 +84,7 @@ function sign(payload: string): string {
   return createHmac("sha256", SECRET).update(payload).digest("base64url");
 }
 
-/** `<pubkey>.<expiry>.<hmac>` — stateless, so restarts do not sign everyone out. */
+/** `<pubkey>.<expiry>.<hmac>` - stateless, so restarts do not sign everyone out. */
 export function issueSession(pubkey: string): string {
   const payload = `${pubkey}.${Date.now() + TTL_MS}`;
   return `${payload}.${sign(payload)}`;

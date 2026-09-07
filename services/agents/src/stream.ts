@@ -3,7 +3,7 @@
  *
  * Replaces the browser polling `/api/live/trades` every few seconds, which had
  * two problems that turned out to be the same problem: trades arrived in visible
- * clumps of ten, and the coin images never rendered — because each poll rebuilt
+ * clumps of ten, and the coin images never rendered - because each poll rebuilt
  * the table's innerHTML, destroying every <img> before it finished loading.
  * Streaming one trade at a time lets the client append rows that persist, so
  * images load once and stay.

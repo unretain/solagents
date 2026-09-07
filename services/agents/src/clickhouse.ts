@@ -1,7 +1,7 @@
 /**
  * ClickHouse client.
  *
- * Reads go over HTTP GET (which the server enforces as readonly — a useful
+ * Reads go over HTTP GET (which the server enforces as readonly - a useful
  * guarantee for a service that runs user-authored filters). Writes must be POST
  * with the body sent raw, because the POST body is NOT url-decoded server-side.
  */

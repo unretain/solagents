@@ -2,7 +2,7 @@
  * Coin terminal: everything known about one mint.
  *
  * Candles use the same `argMinMerge/argMaxMerge` aggregation polyx-api uses
- * (src/clickhouse/queries.ts) — `candles_1m` is an AggregatingMergeTree, so open
+ * (src/clickhouse/queries.ts) - `candles_1m` is an AggregatingMergeTree, so open
  * and close are aggregate STATES and reading them with plain `min`/`max` returns
  * binary garbage rather than prices.
  *
@@ -22,9 +22,22 @@ const INTERVALS: Record<string, number> = {
 };
 
 /**
+ * How many bars each timeframe keeps.
+ *
+ * This was a flat 600 for every timeframe, which at 1s is exactly ten minutes:
+ * any coin quiet for longer rendered a chart that ended in the past, with the
+ * trading trimmed off the front by the same cap. Sized per timeframe so a
+ * coin's whole life and its dead tail both fit.
+ */
+const WINDOW_BARS: Record<string, number> = {
+  "1s": 1800, "5s": 900, "15s": 600, "1m": 360, "5m": 300,
+  "15m": 300, "1h": 300, "4h": 300, "1d": 300,
+};
+
+/**
  * Candles for a mint.
  *
- * Below 1m we cannot use `candles_1m` at all — it is pre-bucketed to the minute.
+ * Below 1m we cannot use `candles_1m` at all - it is pre-bucketed to the minute.
  * Sub-minute timeframes are re-aggregated from raw `trades`, which is the only
  * place the resolution exists. Ordering is by (ts, seq): block time is
  * second-precise, so ordering by ts alone ties across every trade in the same
@@ -35,24 +48,34 @@ const INTERVALS: Record<string, number> = {
  *
  * ClickHouse only returns buckets that HAVE trades, so a quiet stretch comes
  * back as a jump in timestamps. A chart that positions bars by time then draws
- * a hole across that stretch — which is exactly what the terminal showed on the
+ * a hole across that stretch - which is exactly what the terminal showed on the
  * 1s view, where 300 traded buckets spanned 1,636 seconds.
  *
  * A period with no trades is not missing data: it is a period in which the
  * price did not change. So it carries the previous close on all four legs with
  * zero volume, which is the standard OHLCV convention.
  *
- * Capped, because filling 1-second gaps across a coin that went quiet for an
- * hour would generate 3,600 bars nobody can read.
+ * The window always ENDS AT NOW. A chart of a live market that stops ten
+ * minutes in the past is wrong in the way that matters most, so the forward
+ * fill is not budgeted - it is the thing being drawn.
+ *
+ * Capped per timeframe, because filling 1-second gaps across a coin that went
+ * quiet for an hour would generate 3,600 bars nobody can read. Since the window
+ * ends at now, trimming from the start is a sliding window rather than data
+ * loss - and when the dead stretch is longer than the whole window, the fill
+ * starts inside the window instead of walking every second up to it.
  */
-function fillGaps(rows: Candle[], ivSec: number, maxBars = 600, tailBars = 120): Candle[] {
+function fillGaps(rows: Candle[], ivSec: number, maxBars: number): Candle[] {
   if (!rows.length) return rows;
   const step = ivSec * 1000;
+  const nowMs = Date.now();
   const out: Candle[] = [];
+
   for (let i = 0; i < rows.length; i++) {
     const cur = rows[i];
     if (i > 0) {
       const prev = rows[i - 1];
+      // Bounded so a long mid-life gap cannot blow up before the trim runs.
       for (let t = prev.t + step; t < cur.t && out.length < maxBars * 4; t += step) {
         out.push({ t, o: prev.c, h: prev.c, l: prev.c, c: prev.c, v: 0 });
       }
@@ -64,17 +87,21 @@ function fillGaps(rows: Candle[], ivSec: number, maxBars = 600, tailBars = 120):
   // quiet for 14 minutes returned ONE bucket, which the chart drew as a single
   // enormous candle filling the pane. Its price did not stop existing when the
   // trading stopped, so the silence is drawn as flat bars.
-  //
-  // Bounded by tailBars rather than by "now", because at 1s an hour of silence
-  // is 3,600 bars and trimming to maxBars from the start would throw away the
-  // only interesting part - the trading - and leave a flat line.
   const last = out[out.length - 1];
-  const nowMs = Date.now();
-  for (let t = last.t + step, added = 0; t <= nowMs && added < tailBars; t += step, added++) {
-    out.push({ t, o: last.c, h: last.c, l: last.c, c: last.c, v: 0 });
+  const missing = Math.floor((nowMs - last.t) / step);
+  if (missing > 0) {
+    // Walking every second of a multi-hour silence would be hundreds of
+    // thousands of iterations for bars the trim discards anyway. When the
+    // silence alone exceeds the window, begin where the window begins.
+    const skip = Math.max(0, missing - maxBars);
+    for (let k = skip + 1; k <= missing; k++) {
+      const t = last.t + k * step;
+      out.push({ t, o: last.c, h: last.c, l: last.c, c: last.c, v: 0 });
+    }
   }
   return out.length > maxBars ? out.slice(out.length - maxBars) : out;
 }
+
 
 /**
  * Candles, already in USD.
@@ -86,8 +113,11 @@ function fillGaps(rows: Candle[], ivSec: number, maxBars = 600, tailBars = 120):
  * the conversion belongs here.
  */
 export async function candles(
-  mint: string, tf = "1m", limit = 300, solUsd = 0,
+  mint: string, tf = "1m", limit = 0, solUsd = 0,
 ): Promise<Candle[]> {
+  // Enough traded buckets to fill the window; a flat 300 at 1s covered only
+  // five minutes of actual trading.
+  const rowLimit = limit || WINDOW_BARS[tf] || 300;
   const iv = INTERVALS[tf] ?? 60;
   const m = lit(mint);
   const p = solUsd > 0 ? solUsd : 1;   // fall back to SOL rather than to zero
@@ -104,8 +134,8 @@ export async function candles(
              sum(sol_amount)              AS v
       FROM trades
       WHERE mint = ${m} AND price_sol > 0
-      GROUP BY t ORDER BY t DESC LIMIT ${limit}
-      FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv));
+      GROUP BY t ORDER BY t DESC LIMIT ${rowLimit}
+      FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv, WINDOW_BARS[tf] ?? 300));
   }
 
   return chQuery<Candle>(`
@@ -117,8 +147,8 @@ export async function candles(
            sum(volume_sol)    AS v
     FROM candles_1m
     WHERE mint = ${m}
-    GROUP BY t ORDER BY t DESC LIMIT ${limit}
-    FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv));
+    GROUP BY t ORDER BY t DESC LIMIT ${rowLimit}
+    FORMAT JSON`).then((r) => fillGaps(toUsd(r.reverse()), iv, WINDOW_BARS[tf] ?? 300));
 }
 
 export async function coinDetail(mint: string): Promise<Record<string, unknown>> {

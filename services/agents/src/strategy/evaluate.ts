@@ -42,7 +42,7 @@ export function toSql(s: Strategy): string {
   const parts: string[] = [`horizon_s = ${s.decide_at_s}`];
   for (const c of s.entry_all) parts.push(conditionToSql(c));
   if (s.entry_any.length) parts.push(`(${s.entry_any.map(conditionToSql).join(" OR ")})`);
-  // An episode with no entry price was never enterable — excluding it here keeps
+  // An episode with no entry price was never enterable - excluding it here keeps
   // the denominator honest instead of counting it as a flat trade.
   parts.push("px_at_h > 0");
   return parts.join("\n  AND ");
@@ -87,7 +87,7 @@ export function matchesLive(s: Strategy, t: LiveToken): boolean {
 
 /**
  * Asserts every declared feature has both implementations. Called by
- * `npm run check:parity` in CI and at service boot — a feature that is
+ * `npm run check:parity` in CI and at service boot - a feature that is
  * SQL-only would make backtests unreproducible live, and the failure would
  * otherwise show up as unexplained live underperformance months later.
  */

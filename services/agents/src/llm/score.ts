@@ -2,7 +2,7 @@
  * LLM judgement of a coin's presentation, written to `coin_scores`.
  *
  * Scored ONCE per coin. Both the backtester and the live engine read the stored
- * score, so a backtest and a live run see the identical judgement — two separate
+ * score, so a backtest and a live run see the identical judgement - two separate
  * model calls on the same coin would not agree, and the strategy would behave
  * differently in the two places for reasons no one could debug.
  *
@@ -29,7 +29,7 @@ const PROMPT_VERSION = 1;
 /**
  * Hard ceiling on how many coins will ever be scored, enforced against the row
  * count in `coin_scores` before each run. ~$0.0005/coin on Haiku, so the default
- * 30,000 is roughly $15 — comfortably inside a $40 budget even if it runs twice.
+ * 30,000 is roughly $15 - comfortably inside a $40 budget even if it runs twice.
  * A runaway loop over a 40k/day firehose is the failure mode this exists to stop.
  */
 const MAX_SCORED = Number(process.env.SCORE_MAX_COINS || 30_000);
@@ -58,16 +58,16 @@ const scoreSchema = z.object({
 
 const SYSTEM = `You rate how a newly launched Solana memecoin presents itself. You are given its name, symbol, description, and social links.
 
-You are NOT predicting price. You are judging presentation quality — whether a real person put real effort into this, or whether it is one of the thousands of throwaway launches minted every day.
+You are NOT predicting price. You are judging presentation quality - whether a real person put real effort into this, or whether it is one of the thousands of throwaway launches minted every day.
 
 Signals of effort: a coherent name/symbol/description that share a concept; a real x.com profile; a working site; a description that says something specific rather than generic hype.
 Signals of slop: empty or one-word descriptions; pure ticker spam; "1000x" / "next pepe" filler; a link to someone else's tweet rather than the project's own account; a link that is an x.com SEARCH url, which means the launcher had no account to point at.
 
 Scoring:
-  0-25   slop     — no discernible effort
-  26-50  generic  — template launch, nothing wrong, nothing distinctive
-  51-75  decent   — coherent concept, some real effort
-  76-100 strong   — genuinely well presented, real identity behind it
+  0-25   slop     - no discernible effort
+  26-50  generic  - template launch, nothing wrong, nothing distinctive
+  51-75  decent   - coherent concept, some real effort
+  76-100 strong   - genuinely well presented, real identity behind it
 
 Be harsh. On this market the overwhelming majority of launches are slop, and a scale where most coins score "decent" is useless as a filter. Give one short sentence of reasoning.`;
 
@@ -202,7 +202,7 @@ export async function collectBatch(batchId: string): Promise<number> {
   if (batch.processing_status !== "ended") return -1;
 
   let written = 0;
-  // Results come back in ARBITRARY order — keyed by custom_id, never by index.
+  // Results come back in ARBITRARY order - keyed by custom_id, never by index.
   for await (const entry of await client.messages.batches.results(batchId)) {
     if (entry.result.type !== "succeeded") continue;
     const text = entry.result.message.content.find((b) => b.type === "text");

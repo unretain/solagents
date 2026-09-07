@@ -6,7 +6,7 @@
  *   A linear model's prediction is a dot product over columns that already exist
  *   in both `episodes_enriched` and `live_episodes`. That means the score can be
  *   written as a plain SQL expression and evaluated INSIDE the same query that
- *   filters on it — identically in a backtest and in the live feed, with no
+ *   filters on it - identically in a backtest and in the live feed, with no
  *   serving layer, no feature store, and no way for the two to drift. A tree
  *   ensemble would need a separate inference service and would immediately
  *   reintroduce exactly the backtest/live skew this whole design exists to avoid.
@@ -14,13 +14,13 @@
  *   It is also auditable: a user can be shown which terms pushed a coin's score
  *   up or down, which matters when the product is "train your own agent".
  *
- * Users do not train their own model. They filter ON it — `model_score > 0.4`
+ * Users do not train their own model. They filter ON it - `model_score > 0.4`
  * plus whatever else they ask for. One well-fit model over 380k episodes beats
  * thousands of individually-overfit ones on a few hundred rows each.
  */
 
 /** Label: reached +30% before falling -25%, within 10 minutes of entry.
- *  Order-aware — computed by walking the price path, not from a max/min pair. */
+ *  Order-aware - computed by walking the price path, not from a max/min pair. */
 export const TP_MULT = 1.30;
 export const SL_MULT = 0.75;
 
@@ -62,7 +62,7 @@ export interface BaseModel {
   version: number;
   trainedAt: string;
   horizonS: number;
-  /** feature names in coefficient order; may be a SUBSET of MODEL_FEATURES —
+  /** feature names in coefficient order; may be a SUBSET of MODEL_FEATURES -
    *  zero-variance columns are dropped at fit time and must stay dropped. */
   features: string[];
   mean: number[];
@@ -82,7 +82,7 @@ export interface BaseModel {
     nTest: number;
     baseRate: number;
     auc: number;
-    /** lift of the top decile over the base rate — the number a trader cares about */
+    /** lift of the top decile over the base rate - the number a trader cares about */
     top10Lift: number;
     top10Rate: number;
     trainCutoff: string;

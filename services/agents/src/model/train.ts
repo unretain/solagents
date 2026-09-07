@@ -16,7 +16,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 const horizon = Number(process.argv[2] || 60);
 
 // Rows: features + order-aware label. Dead coins (empty path) are INCLUDED with
-// label 0 — they are real total losses, and dropping them would train the model
+// label 0 - they are real total losses, and dropping them would train the model
 // on survivors only and make every score wildly optimistic.
 const cols = MODEL_FEATURES.map((f) => `${f.expr} AS ${f.name}`).join(",\n    ");
 
@@ -41,7 +41,7 @@ const sql = `
 
 console.log(`[train] pulling episodes (horizon ${horizon}s)…`);
 const rows = await chQuery<Record<string, number | string>>(sql);
-if (rows.length < 5000) throw new Error(`only ${rows.length} rows — not enough to fit`);
+if (rows.length < 5000) throw new Error(`only ${rows.length} rows - not enough to fit`);
 
 const names = MODEL_FEATURES.map((f) => f.name);
 const X = rows.map((r) => names.map((n) => Number(r[n]) || 0));
@@ -171,7 +171,7 @@ try {
 // ── publish: rebuild both views with the score inlined ─────────────────
 const expr = modelScoreSql(model);
 await rebuildViews(expr);
-console.log("[train] views rebuilt with model_score — backtest and live now share it");
+console.log("[train] views rebuilt with model_score - backtest and live now share it");
 
 async function rebuildViews(scoreExpr: string): Promise<void> {
   const { readFileSync } = await import("node:fs");

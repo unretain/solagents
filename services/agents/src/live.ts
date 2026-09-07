@@ -5,7 +5,7 @@
  * `live_episodes` view whose columns mirror `episodes_enriched` exactly. A live
  * pick and a backtest hit are therefore the same decision by construction.
  *
- * No model call and no per-trade socket in this path — a coin whose median life
+ * No model call and no per-trade socket in this path - a coin whose median life
  * is two minutes will not wait for either.
  */
 import { chQuery } from "./clickhouse.js";
@@ -17,7 +17,7 @@ export interface LivePick {
   symbol: string;
   name: string;
   /** carried from live_snapshot so the picks list shows coin art like every
-   *  other list does — without it these rows rendered as blank placeholders */
+   *  other list does - without it these rows rendered as blank placeholders */
   image: string;
   t0: string;
   ageS: number;
@@ -46,7 +46,7 @@ const SELECT = `
  * Coins matching `s` that crossed their decision horizon within `freshS`.
  *
  * The freshness bound is what makes this a stream of NEW picks rather than a
- * standing list — without it every poll re-reports the same coins for 40
+ * standing list - without it every poll re-reports the same coins for 40
  * minutes, and the UI shows a strategy "firing" repeatedly on one launch.
  */
 export async function livePicks(s: Strategy, freshS = 900, limit = 50): Promise<LivePick[]> {
@@ -74,8 +74,8 @@ export interface LiveTx {
 /**
  * The raw firehose: every trade the platform is scanning, newest first.
  *
- * This is what the agents actually see. It is deliberately unfiltered — roughly
- * 30 trades a second across ~57 coins — because "what is it looking at" and
+ * This is what the agents actually see. It is deliberately unfiltered - roughly
+ * 30 trades a second across ~57 coins - because "what is it looking at" and
  * "what did it pick" are different questions, and only showing picks makes a
  * quiet minute indistinguishable from a broken feed.
  *
@@ -111,7 +111,7 @@ export async function scanRate(): Promise<{ trades: number; coins: number; sol: 
   return r ?? { trades: 0, coins: 0, sol: 0 };
 }
 
-/** Everything happening right now, regardless of strategy — the "what is the
+/** Everything happening right now, regardless of strategy - the "what is the
  *  feed even doing" panel, so an empty picks list can be told apart from a
  *  stalled feed. */
 export async function liveTape(limit = 40): Promise<LivePick[]> {
@@ -129,7 +129,7 @@ export async function liveTape(limit = 40): Promise<LivePick[]> {
  *
  * Deliberately one query per strategy rather than one big OR: the strategies are
  * independent, each WHERE is cheap (the view answers in ~0.3s), and a single
- * fused query could not report WHICH strategy matched — which is the only
+ * fused query could not report WHICH strategy matched - which is the only
  * interesting part of the display.
  */
 export async function publishedPicks(

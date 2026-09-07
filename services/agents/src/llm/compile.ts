@@ -9,7 +9,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 // jsonSchemaOutputFormat, not zodOutputFormat: the Zod helper calls
 // `z.toJSONSchema`, which only exists in Zod 4, and this project is on Zod 3.
 // Upgrading Zod to satisfy one helper would put every validator in the codebase
-// through a major-version migration for no gain — the schema below is written
+// through a major-version migration for no gain - the schema below is written
 // once and Zod still does the real validation after the model answers.
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
 import { client, modelId, llmConfigured } from "./client.js";
@@ -18,7 +18,7 @@ import { FEATURES } from "../strategy/features.js";
 import { strategySchema, explainInvalid, type Strategy } from "../strategy/schema.js";
 
 /** Model for strategy compilation. Config, not code, so it can be changed
- *  without a deploy — but the default is the most capable model, because a
+ *  without a deploy - but the default is the most capable model, because a
  *  misread strategy is a silent loss of the user's money. */
 const MODEL = modelId(process.env.COMPILE_MODEL || "claude-opus-5");
 
@@ -52,7 +52,21 @@ const draftSchema = z.object({
   }),
 });
 
-/** The same shape as `draftSchema`, for the model. Kept beside it deliberately —
+/**
+ * The model writes `name` and `thesis`, and both render on the Build page, so a
+ * model-authored em dash lands on the site no matter how clean the source is.
+ * Instructing it is not enough to rely on, so strip on the way out too.
+ */
+function stripEmDashes<T>(v: T): T {
+  if (typeof v === "string") return v.replace(/\s*—\s*/g, " - ") as unknown as T;
+  if (Array.isArray(v)) return v.map(stripEmDashes) as unknown as T;
+  if (v && typeof v === "object") {
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, stripEmDashes(x)])) as T;
+  }
+  return v;
+}
+
+/** The same shape as `draftSchema`, for the model. Kept beside it deliberately -
  *  if one changes the other must, and the Zod parse right after the call is what
  *  catches it if they drift. */
 const cond = {
@@ -122,7 +136,9 @@ ${featureCatalogue()}
 Operators: numeric features take gt/gte/lt/lte/eq/neq; enum features take in/nin; boolean features take is.
 Encode every "value" as a STRING: "15", "0.55", "true", or for enums a comma-separated list like "profile,decent".
 
-Market facts that should inform your defaults — this is not a normal market:
+Never use em dashes in any text you write. Use a plain hyphen.
+
+Market facts that should inform your defaults - this is not a normal market:
 - The median coin trades for 2 minutes and sees 8 trades. p75 is 38 minutes.
 - Buying at 60s and holding 5 minutes loses ~46% on average across all launches. Entry filters are what make a strategy viable, and exits are what make it profitable.
 - A bare x.com profile link graduates ~9.5% of the time; no link ~2.5%; a link to someone else's tweet ~1.1% despite high volume.
@@ -152,7 +168,7 @@ export async function compileStrategy(text: string): Promise<CompileResult> {
     return {
       ok: false,
       error:
-        "AI compile is off — no ANTHROPIC_API_KEY is configured. " +
+        "AI compile is off - no ANTHROPIC_API_KEY is configured. " +
         "Use “Build by hand” to set the same conditions yourself; everything else works.",
     };
   }
@@ -168,7 +184,7 @@ export async function compileStrategy(text: string): Promise<CompileResult> {
       output_config: {
         // Low effort, deliberately. The prompt is ~1,000 tokens in and ~142 out;
         // at default effort the thinking tokens are ~2,500 and are billed as
-        // output, so they are 93% of the bill — $0.067 a compile instead of
+        // output, so they are 93% of the bill - $0.067 a compile instead of
         // $0.005. This is constrained extraction into a fixed schema with a
         // validator and a repair round behind it, not a reasoning problem.
         effort: "low",
@@ -182,11 +198,11 @@ export async function compileStrategy(text: string): Promise<CompileResult> {
     const draft = res.parsed_output as z.infer<typeof draftSchema> | null;
     if (!draft) return { ok: false, error: "The model did not return a usable config." };
 
-    const parsed = strategySchema.safeParse(coerce(draft));
+    const parsed = strategySchema.safeParse(coerce(stripEmDashes(draft)));
     if (parsed.success) return { ok: true, strategy: parsed.data };
 
     // One repair round. The model gets the exact validator output, which names
-    // the offending path — far more useful than restating the rules.
+    // the offending path - far more useful than restating the rules.
     if (attempt === 0) {
       messages.push(
         { role: "assistant", content: JSON.stringify(draft) },
@@ -214,7 +230,7 @@ export async function compileStrategy(text: string): Promise<CompileResult> {
 function coerce(draft: z.infer<typeof draftSchema>): unknown {
   const conv = (c: { feature: string; op: string; value: string }) => {
     const def = (FEATURES as Record<string, { kind: string } | undefined>)[c.feature];
-    if (!def) return c; // unknown feature — let the real schema reject it by name
+    if (!def) return c; // unknown feature - let the real schema reject it by name
     if (def.kind === "enum") return { ...c, value: c.value.split(",").map((s) => s.trim()).filter(Boolean) };
     if (def.kind === "bool") return { ...c, value: /^(true|1|yes)$/i.test(c.value.trim()) };
     return { ...c, value: Number(c.value) };

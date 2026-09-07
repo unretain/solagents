@@ -3,7 +3,7 @@
  *
  * Every judgement call here is made in the pessimistic direction. A backtester
  * that resolves its own ambiguities favourably is not a backtester, it is a
- * sales pitch — and on this market (median coin dead in 2 minutes) the optimistic
+ * sales pitch - and on this market (median coin dead in 2 minutes) the optimistic
  * version of each of these produces spectacular, entirely fictional returns.
  */
 
@@ -34,7 +34,7 @@ export function simulateExit(
   rules: ExitRules,
 ): ExitResult {
   // No trade after entry at all. The position cannot be closed at any observed
-  // price, so it is marked worthless rather than settled at the entry price —
+  // price, so it is marked worthless rather than settled at the entry price -
   // a coin nobody traded again is not a break-even, it is a total loss.
   if (!ks.length) {
     return { exitPx: 0, reason: "no_liquidity", heldS: rules.max_hold_s, peakPx: entryPx };
@@ -96,7 +96,7 @@ export function simulateExit(
  *
  * `curveSol` is the SOL side of the curve at entry (virtual ~30 + real). When
  * `real_sol` is unknown (it is only ~45% populated) we fall back to the virtual
- * 30 SOL floor, which UNDERSTATES slippage for large curves — so callers should
+ * 30 SOL floor, which UNDERSTATES slippage for large curves - so callers should
  * treat unknown-reserve episodes as optimistic.
  */
 export function roundTripCost(sizeSol: number, curveSol: number, feeBps = 200): number {

@@ -458,6 +458,7 @@
           <div class="row" style="margin-top:12px">
             <button id="compile">Compile with AI</button>
             <button class="ghost" id="manual">Build by hand</button>
+            <span class="tag" id="llmBadge" style="margin-left:auto"></span>
           </div>
           <div id="compileMsg"></div>
           <div class="steplbl" style="margin-top:20px">Or start from one of these</div>
@@ -529,7 +530,22 @@
 
 <script type="module">
 const $ = (s) => document.querySelector(s);
-const BASE = location.pathname.replace(/[^/]*$/, "");
+/**
+ * Every read goes to the box, wherever this page happens to be served from.
+ *
+ * The box is the only machine with the validator, the ClickHouse and the model
+ * on it. A copy of this page deployed anywhere else has no data of its own, so
+ * pointing it at its own origin gave a second, emptier version of the site
+ * whose API answered "no key configured" and served stale code. There is one
+ * dataset, so there is one API.
+ *
+ * Served from the box itself it stays relative, which keeps it same-origin and
+ * skips the CORS preflight entirely.
+ */
+const API_ORIGIN = "https://api.polyx.trade/agents/";
+const BASE = location.hostname === "api.polyx.trade"
+  ? location.pathname.replace(/[^/]*$/, "")
+  : API_ORIGIN;
 const api = async (p, o) => {
   const r = await fetch(BASE + String(p).replace(/^\//, ""),
     { headers: { "Content-Type": "application/json" }, ...o });
@@ -596,6 +612,15 @@ async function navStats() {
   } catch {}
 }
 navStats(); setInterval(navStats, 60000);
+
+function paintLlm(llm) {
+  const el = $("#llmBadge"); if (!el || !llm) return;
+  el.textContent = llm.configured ? `AI ready - ${llm.via}` : "AI off - no key";
+  el.className = llm.configured ? "tag profile" : "tag";
+  const b = $("#compile");
+  if (b) { b.disabled = !llm.configured; b.title = llm.configured ? "" : "Set ANTHROPIC_API_KEY on the server"; }
+}
+api("/api/bootstrap").then((b) => paintLlm(b.llm)).catch(() => {});
 
 async function loadHome() {
   try {

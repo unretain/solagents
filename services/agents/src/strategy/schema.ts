@@ -2,7 +2,7 @@
  * The strategy contract.
  *
  * A user describes a strategy in English; an LLM emits one of these; it is
- * validated here and then executed — identically — by the backtester, the paper
+ * validated here and then executed - identically - by the backtester, the paper
  * engine and the live executor. The LLM never writes code and never runs at
  * decision time. It is a compiler from English to this object, once, at save
  * time. What trades is a deterministic evaluator over a validated config.

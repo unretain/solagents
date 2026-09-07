@@ -32,7 +32,7 @@ const REQUIRED = [
   "loadTerminal", "selectCoin", "loadCoinDetail", "loadCandles", "initChart",
   "applyBars", "ensureYAxis", "buildStyles", "fmtClock",
   // build
-  "filterRow", "read", "write", "renderBT", "renderPresets", "renderFeatureTable",
+  "filterRow", "read", "write", "renderBT", "paintLlm", "renderPresets", "renderFeatureTable",
   // pages
   "loadModel", "loadMine", "loadBoard",
   // wallet

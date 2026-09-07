@@ -1,5 +1,5 @@
 /**
- * Scoring job. Run on a schedule (or by hand) — never in a request path.
+ * Scoring job. Run on a schedule (or by hand) - never in a request path.
  *
  *   node dist/jobs/score.js [batchSize]
  *
@@ -12,7 +12,7 @@ const batch = Number(process.argv[2] || 200);
 
 const room = await budgetRemaining();
 if (room <= 0) {
-  console.log("[score] budget ceiling reached — nothing to do (raise SCORE_MAX_COINS to continue)");
+  console.log("[score] budget ceiling reached - nothing to do (raise SCORE_MAX_COINS to continue)");
   process.exit(0);
 }
 
@@ -31,7 +31,7 @@ for (const c of coins) {
   } catch (e) {
     failed++;
     console.error(`[score] ${c.mint}: ${(e as Error).message}`);
-    // A 429 or an auth failure will hit every remaining coin identically —
+    // A 429 or an auth failure will hit every remaining coin identically -
     // stop rather than grind through the whole batch producing errors.
     if (/rate|401|403|invalid_api_key/i.test((e as Error).message)) break;
   }

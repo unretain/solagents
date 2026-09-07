@@ -4,8 +4,8 @@
  * Every feature an agent can condition on is declared here exactly once, with
  * both of its implementations bound side by side:
  *
- *   ch    — the ClickHouse expression that produces it from `episodes` (backtest)
- *   live  — the function that produces it from live feed state (paper + real)
+ *   ch    - the ClickHouse expression that produces it from `episodes` (backtest)
+ *   live  - the function that produces it from live feed state (paper + real)
  *
  * They are declared together so the two can never drift apart. A feature that
  * exists in one and not the other is the single most expensive bug this kind of
@@ -130,7 +130,7 @@ export const FEATURES = {
   },
   mcap_sol: {
     kind: "number",
-    doc: "Market cap in SOL. Exactly price_sol * 1e9 — do not use alongside price_sol.",
+    doc: "Market cap in SOL. Exactly price_sol * 1e9 - do not use alongside price_sol.",
     ch: "mcap_at_h",
     live: (t) => t.mcapSol,
   },
@@ -185,7 +185,7 @@ export const FEATURES = {
     doc:
       "Shape of the x.com link. Measured over 2026-09-05: profile graduates 9.5% of the " +
       "time vs 2.5% for none and 1.1% for status. A status link rides someone else's " +
-      "tweet — high volume, almost never graduates.",
+      "tweet - high volume, almost never graduates.",
     ch: "twitter_kind",
     live: (t) => twitterKind(t.twitter),
   },
@@ -208,7 +208,7 @@ export const FEATURES = {
     kind: "number",
     doc:
       "0-100 LLM rating of the coin's presentation (name, description, socials, tweet " +
-      "when available). 0 means NOT SCORED, which is not the same as a bad score — a " +
+      "when available). 0 means NOT SCORED, which is not the same as a bad score - a " +
       "filter like llm_score > 60 therefore also excludes unscored coins, on purpose.",
     ch: "llm_score",
     live: (t) => t.llmScore ?? 0,
