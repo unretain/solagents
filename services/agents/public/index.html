@@ -1019,6 +1019,10 @@ function buildStyles() {
 }
 
 let bars = [];
+let prevBars = [];
+let pushBar = null;     // the subscribeBar callback, captured at init
+let chartTf = null;     // the period the chart is currently showing
+
 function initChart() {
   if (chart || !window.klinecharts) return;
   ensureYAxis();
@@ -1032,32 +1036,91 @@ function initChart() {
   });
   if (!chart) return;
 
-  // We hold the whole series in memory, so there is nothing to page in: answer
-  // the initial load with everything and refuse both directions.
   chart.setDataLoader({
+    // We always hold the entire series in memory, so there is nothing to page
+    // in: answer the initial load with everything and refuse both directions.
     getBars: ({ type, callback }) => {
       if (type === "init") callback(bars.slice(), false);
       else callback([], false);
     },
-    subscribeBar: () => {}, unsubscribeBar: () => {},
+    // Capturing this is what makes live appends possible. Stubbing it out (as
+    // this did) leaves resetData as the only way to get data in, which throws
+    // away the viewport on every refresh.
+    subscribeBar: ({ callback }) => { pushBar = callback; },
+    unsubscribeBar: () => { pushBar = null; },
   });
   chart.overrideYAxis({ name: Y_AXIS, paneId: "candle_pane" });
   chart.setSymbol({ ticker: "PUMPLAB", pricePrecision: 2, volumePrecision: 0 });
   chart.setPeriod(PERIODS[tf]);
+  chartTf = tf;
 
-  const ro = new ResizeObserver(() => chart.resize());
-  ro.observe(document.getElementById("chart"));
+  const host = document.getElementById("chart");
+  if (window.ResizeObserver && host) new ResizeObserver(() => chart.resize()).observe(host);
+}
+
+/**
+ * Hand the new series to the chart.
+ *
+ * Ported from KLineChart.tsx's data effect. The distinction it draws is the
+ * important part:
+ *
+ *   - a genuinely different series (coin switch, timeframe switch, pruned
+ *     window) needs resetData(), which drops the cache so the loader is asked
+ *     again;
+ *   - a longer array with the same first timestamp is the live feed appending,
+ *     and must be pushed bar-by-bar so the viewport is not reset under the user.
+ *
+ * Calling setPeriod with the period it already has — which is what this did —
+ * re-runs nothing, so the loader kept answering with the empty array it was
+ * given at init. That is the hole in the chart.
+ */
+function applyBars(next) {
+  if (!chart) return;
+  const prev = prevBars;
+
+  if (!next.length) { prevBars = []; chart.resetData(); return; }
+
+  const sameSeries =
+    prev.length > 0 && next.length >= prev.length &&
+    next[0].timestamp === prev[0].timestamp;
+
+  if (!sameSeries) {
+    chart.resetData();
+    prevBars = next.slice();
+    return;
+  }
+
+  if (!pushBar) { chart.resetData(); prevBars = next.slice(); return; }
+  // Push the tail: the last bar we already showed may have been revised in
+  // place (a still-open candle), and anything past it is new. `open` belongs in
+  // this comparison — a bar's open is rewritten when the one before it closes.
+  for (let i = Math.max(0, prev.length - 1); i < next.length; i++) {
+    const b = next[i], o = prev[i];
+    if (o && o.timestamp === b.timestamp && o.open === b.open && o.close === b.close &&
+        o.high === b.high && o.low === b.low) continue;
+    pushBar(b);
+  }
+  prevBars = next.slice();
 }
 
 async function loadCandles(mint) {
   initChart();
   if (!chart) { $("#chartNote").textContent = "chart library failed to load"; return; }
+
   const c = await api(`/api/coin/${mint}/candles?tf=${tf}`).catch(() => []);
   if (selMint !== mint) return;
 
-  // Plotted as market cap, not raw price: a coin at 2.8e-8 SOL renders as a flat
-  // line of zeros on any axis a human can read. In USD when the SOL rate is
-  // known, otherwise in SOL — never as $0.00.
+  // A timeframe switch is a different series and should refit rather than
+  // append, so the period is set BEFORE the data and the cache is dropped.
+  if (chartTf !== tf) {
+    chart.setPeriod(PERIODS[tf]);
+    chartTf = tf;
+    prevBars = [];
+  }
+
+  // Plotted as market cap, not raw price: a coin at 2.8e-8 SOL renders as a
+  // flat line of zeros on any axis a human can read. USD when the SOL rate is
+  // known, SOL otherwise — never $0.00.
   const mult = SUPPLY * (solPrice || 1);
   bars = c.map((k) => ({
     timestamp: +k.t, open: +k.o * mult, high: +k.h * mult,
@@ -1067,9 +1130,7 @@ async function loadCandles(mint) {
     ? `${bars.length} candles · market cap in ${solPrice ? "USD" : "SOL"}`
     : "no trades at this timeframe yet";
 
-  // setPeriod re-runs the loader, which is what we want: a timeframe switch is a
-  // different series and should refit rather than append.
-  chart.setPeriod(PERIODS[tf]);
+  applyBars(bars);
 }
 
 document.querySelectorAll(".tf").forEach((b) => (b.onclick = () => {

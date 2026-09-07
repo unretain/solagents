@@ -30,6 +30,38 @@ const INTERVALS: Record<string, number> = {
  * second-precise, so ordering by ts alone ties across every trade in the same
  * second and open/close collapse to the same row, rendering every candle flat.
  */
+/**
+ * Fill intervals that saw no trades.
+ *
+ * ClickHouse only returns buckets that HAVE trades, so a quiet stretch comes
+ * back as a jump in timestamps. A chart that positions bars by time then draws
+ * a hole across that stretch — which is exactly what the terminal showed on the
+ * 1s view, where 300 traded buckets spanned 1,636 seconds.
+ *
+ * A period with no trades is not missing data: it is a period in which the
+ * price did not change. So it carries the previous close on all four legs with
+ * zero volume, which is the standard OHLCV convention.
+ *
+ * Capped, because filling 1-second gaps across a coin that went quiet for an
+ * hour would generate 3,600 bars nobody can read.
+ */
+function fillGaps(rows: Candle[], ivSec: number, maxBars = 600): Candle[] {
+  if (rows.length < 2) return rows;
+  const step = ivSec * 1000;
+  const out: Candle[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const cur = rows[i];
+    if (i > 0) {
+      const prev = rows[i - 1];
+      for (let t = prev.t + step; t < cur.t && out.length < maxBars * 4; t += step) {
+        out.push({ t, o: prev.c, h: prev.c, l: prev.c, c: prev.c, v: 0 });
+      }
+    }
+    out.push(cur);
+  }
+  return out.length > maxBars ? out.slice(out.length - maxBars) : out;
+}
+
 export async function candles(mint: string, tf = "1m", limit = 300): Promise<Candle[]> {
   const iv = INTERVALS[tf] ?? 60;
   const m = lit(mint);
@@ -45,7 +77,7 @@ export async function candles(mint: string, tf = "1m", limit = 300): Promise<Can
       FROM trades
       WHERE mint = ${m} AND price_sol > 0
       GROUP BY t ORDER BY t DESC LIMIT ${limit}
-      FORMAT JSON`).then((r) => r.reverse());
+      FORMAT JSON`).then((r) => fillGaps(r.reverse(), iv));
   }
 
   return chQuery<Candle>(`
@@ -58,7 +90,7 @@ export async function candles(mint: string, tf = "1m", limit = 300): Promise<Can
     FROM candles_1m
     WHERE mint = ${m}
     GROUP BY t ORDER BY t DESC LIMIT ${limit}
-    FORMAT JSON`).then((r) => r.reverse());
+    FORMAT JSON`).then((r) => fillGaps(r.reverse(), iv));
 }
 
 export async function coinDetail(mint: string): Promise<Record<string, unknown>> {
