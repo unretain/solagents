@@ -13,7 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- klinecharts: the charting library the polyx mobile app already uses, so
      candles look and behave the same in both products. -->
-<script src="https://cdn.jsdelivr.net/npm/klinecharts@9.8.10/dist/umd/klinecharts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/klinecharts@10.0.3/dist/umd/klinecharts.min.js"></script>
 <style>
   /* Palette lifted from the Polyx house tokens (apps/web/src/app/globals.css):
      --primary 142 76% 36%, --background 0 0% 3.9%, --card 0 0% 7%,
@@ -949,144 +949,127 @@ const usd = (v) => {
 };
 let chart = null, selMint = null, tf = "1m", solPrice = 0, watching = [];
 
+// Ported from unretain/polyxmobile apps/web/src/components/charts/KLineChart.tsx.
+// That file targets klinecharts v10, whose API is setDataLoader / registerYAxis /
+// setSymbol / setPeriod — the v9 calls used here before (applyNewData +
+// setPriceVolumePrecision) silently did nothing useful, which is why the tooltip
+// read "Open: 32 High: 32 Low: 32": every value was rounded to 0 decimals.
+const UP = "#22c55e", DOWN = "#ef4444";
+const ACCENT = "#32d74b";           // their orange swapped for our brand green
+
+const PERIODS = {
+  "1s": { type: "second", span: 1 },
+  "15s": { type: "second", span: 15 },
+  "1m": { type: "minute", span: 1 },
+  "5m": { type: "minute", span: 5 },
+  "1h": { type: "hour", span: 1 },
+};
+
+const fmtClock = (ms, t) => {
+  const d = new Date(ms);
+  if (t === "1d") return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const secs = t === "1s" || t === "15s";
+  return d.toLocaleTimeString([], {
+    hour: "2-digit", minute: "2-digit", ...(secs ? { second: "2-digit" } : {}),
+  });
+};
+
+// The y-axis is registered once, globally, so market-cap values render as $3.7K
+// rather than a per-token price that rounds to $0.00. This is the whole reason
+// the numbers were unreadable.
+const Y_AXIS = "pumplab_mcap";
+let yAxisDone = false;
+function ensureYAxis() {
+  if (yAxisDone || !window.klinecharts?.registerYAxis) return;
+  klinecharts.registerYAxis({ name: Y_AXIS, displayValueToText: (v) => usd(v) });
+  yAxisDone = true;
+}
+
+function buildStyles() {
+  const grid = "rgba(255,255,255,.055)";
+  const border = "rgba(255,255,255,.1)";
+  const text = "rgba(244,247,246,.45)";
+  return {
+    grid: { show: true,
+      horizontal: { show: true, color: grid, style: "dashed" },
+      vertical: { show: true, color: grid, style: "dashed" } },
+    candle: {
+      type: "candle_solid",
+      bar: { upColor: UP, downColor: DOWN, noChangeColor: "#888",
+             upBorderColor: UP, downBorderColor: DOWN, noChangeBorderColor: "#888",
+             upWickColor: UP, downWickColor: DOWN, noChangeWickColor: "#888" },
+      priceMark: { show: true,
+        high: { show: true, color: text }, low: { show: true, color: text },
+        // The last-price mark takes its colour from the up/down/noChange trio
+        // rather than a single `color`.
+        last: { show: true, upColor: ACCENT, downColor: ACCENT, noChangeColor: ACCENT,
+                line: { show: true, style: "dashed" }, text: { color: "#06140b" } } },
+      tooltip: { showRule: "follow_cross", showType: "standard" },
+    },
+    xAxis: { show: true, axisLine: { show: true, color: border },
+             tickLine: { show: true, color: border }, tickText: { show: true, color: text } },
+    yAxis: { show: true, axisLine: { show: true, color: border },
+             tickLine: { show: true, color: border }, tickText: { show: true, color: text } },
+    crosshair: { show: true,
+      horizontal: { show: true, line: { show: true, style: "dashed", color: ACCENT },
+                    text: { color: "#06140b", backgroundColor: ACCENT } },
+      vertical: { show: true, line: { show: true, style: "dashed", color: ACCENT },
+                  text: { color: "#06140b", backgroundColor: ACCENT } } },
+  };
+}
+
+let bars = [];
 function initChart() {
   if (chart || !window.klinecharts) return;
+  ensureYAxis();
   chart = klinecharts.init("chart", {
-    styles: {
-      grid: { horizontal: { color: "rgba(255,255,255,.045)" },
-              vertical:   { color: "rgba(255,255,255,.045)" } },
-      candle: {
-        bar: { upColor: "#22c55e", downColor: "#ef4444",
-               upBorderColor: "#22c55e", downBorderColor: "#ef4444",
-               upWickColor: "#22c55e", downWickColor: "#ef4444" },
-        priceMark: { last: { text: { color: "#0b0e11" } } },
-        tooltip: { text: { color: "#e8ebf0" } },
-      },
-      xAxis: { axisLine: { color: "rgba(255,255,255,.08)" },
-               tickText: { color: "rgba(244,247,246,.4)" },
-               tickLine: { color: "rgba(255,255,255,.08)" } },
-      yAxis: { axisLine: { color: "rgba(255,255,255,.08)" },
-               tickText: { color: "rgba(244,247,246,.4)" },
-               tickLine: { color: "rgba(255,255,255,.08)" } },
-      crosshair: { horizontal: { line: { color: "rgba(255,255,255,.25)" } },
-                   vertical:   { line: { color: "rgba(255,255,255,.25)" } } },
+    formatter: {
+      // Crosshair wants full precision; the axis follows the timeframe.
+      formatDate: ({ timestamp, type }) => fmtClock(timestamp, type === "xAxis" ? tf : "1s"),
+      formatBigNumber: (v) => usd(Number(v)),
     },
+    styles: buildStyles(),
   });
-  // Prices here are ~1e-8 SOL, so the axis is shown as market cap in USD —
-  // otherwise every label reads 0.00 and the chart is unreadable.
-  chart.setPriceVolumePrecision(0, 2);
-  chart.setStyles({ yAxis: { type: "normal" } });
-}
+  if (!chart) return;
 
-async function loadTerminal() {
-  try {
-    watching = await api("/api/watchlist");
-    $("#wlCount").textContent = `${watching.length} coins`;
-    $("#wl").innerHTML = watching.map((w) => {
-      const pic = imgTag(w.image, "ph");
-      const hot = +w.score >= .4;
-      return `<div class="wl-item" data-mint="${esc(w.mint)}"
-          aria-selected="${w.mint === selMint}">
-        ${pic}
-        <div style="min-width:0">
-          <div class="wl-nm">${esc(w.symbol || w.mint.slice(0,6))}</div>
-          <div class="wl-sub">${w.ageS}s · ${w.nTraders} traders · ${n(w.volSol,1)} SOL</div>
-        </div>
-        <div class="wl-sc ${hot ? "" : "lo"}">${n(w.score,2)}</div>
-      </div>`;
-    }).join("") || `<div class="empty">Nothing matches right now.</div>`;
+  // We hold the whole series in memory, so there is nothing to page in: answer
+  // the initial load with everything and refuse both directions.
+  chart.setDataLoader({
+    getBars: ({ type, callback }) => {
+      if (type === "init") callback(bars.slice(), false);
+      else callback([], false);
+    },
+    subscribeBar: () => {}, unsubscribeBar: () => {},
+  });
+  chart.overrideYAxis({ name: Y_AXIS, paneId: "candle_pane" });
+  chart.setSymbol({ ticker: "PUMPLAB", pricePrecision: 2, volumePrecision: 0 });
+  chart.setPeriod(PERIODS[tf]);
 
-    document.querySelectorAll(".wl-item").forEach((el) =>
-      (el.onclick = () => selectCoin(el.dataset.mint)));
-
-    if (!selMint && watching.length) selectCoin(watching[0].mint);
-  } catch (e) { $("#wl").innerHTML = `<div class="note err">${esc(e.message)}</div>`; }
-}
-
-async function selectCoin(mint) {
-  selMint = mint;
-  document.querySelectorAll(".wl-item").forEach((el) =>
-    el.setAttribute("aria-selected", String(el.dataset.mint === mint)));
-  await Promise.all([loadCoinDetail(mint), loadCandles(mint)]);
-}
-
-async function loadCoinDetail(mint) {
-  const d = await api(`/api/coin/${mint}`).catch(() => null);
-  if (!d || selMint !== mint) return;
-  const m = d.meta, pr = d.price || {};
-  const pic = imgTag(m.image, "ph");
-  const links = [
-    m.twitter ? `<a class="tag" href="${esc(m.twitter)}" target="_blank" rel="noopener">X</a>` : "",
-    m.website ? `<a class="tag" href="${esc(m.website)}" target="_blank" rel="noopener">site</a>` : "",
-    m.telegram ? `<a class="tag" href="${esc(m.telegram)}" target="_blank" rel="noopener">TG</a>` : "",
-  ].join(" ");
-  $("#chead").innerHTML = `${pic}
-    <div style="min-width:0">
-      <div class="nm">${esc(m.symbol || mint.slice(0,6))}</div>
-      <div class="mint" title="click to copy" data-copy="${esc(mint)}">${esc(mint.slice(0,6))}…${esc(mint.slice(-6))}</div>
-    </div>
-    <div style="display:flex;gap:6px;align-items:center">${links}</div>
-    <div class="px">
-      <b>${solPrice > 0 ? usd((+pr.px || 0) * SUPPLY * solPrice) : n((+pr.px||0) * SUPPLY, 2) + " SOL"}</b>
-      <span>mcap · ${n((+pr.px||0) * SUPPLY, 1)} SOL · ${n(pr.vol24,0)} SOL 24h</span>
-    </div>`;
-  $("#chead .mint").onclick = (e) => {
-    navigator.clipboard?.writeText(e.target.dataset.copy);
-    e.target.textContent = "copied"; setTimeout(() => loadCoinDetail(mint), 900);
-  };
-
-  // The agent's-eye view: exactly the columns a strategy filters on.
-  const l = (d.live || []).find((x) => +x.horizon_s === 60) || (d.live || [])[0];
-  $("#agentView").innerHTML = l ? [
-    ["Model score", n(l.model_score,3), +l.model_score >= .4 ? "up" : ""],
-    ["Traders", l.n_traders, ""],
-    ["Trades", l.n_trades, ""],
-    ["Volume", n(l.vol_sol,2) + " SOL", ""],
-    ["Buy ratio", n(l.buy_ratio*100,0) + "%", +l.buy_ratio > .5 ? "up" : "down"],
-    ["Fees paid", n(l.fees_sol,4), ""],
-    ["Concentration", n(l.concentration*100,0) + "%", +l.concentration > .5 ? "down" : ""],
-    ["Dev sold", +l.dev_sold ? "yes" : "no", +l.dev_sold ? "down" : "up"],
-    ["Dev launches", l.dev_launch_count, +l.dev_launch_count > 0 ? "down" : "up"],
-    ["X link", l.twitter_kind, l.twitter_kind === "profile" ? "up" : ""],
-    ["AI verdict", l.llm_verdict || "unscored", l.llm_verdict === "strong" ? "up" : ""],
-    ["Age", l.age_now_s + "s", ""],
-  ].map(([k,v,c]) => `<div class="av"><div class="k">${k}</div><div class="v ${c}">${esc(String(v))}</div></div>`).join("")
-    : `<div class="av"><div class="k">No agent view</div><div class="v">—</div></div>`;
-
-  $("#coinTape").innerHTML = (d.trades||[]).map((t)=>`<tr>
-      <td><span class="tag ${t.isBuy?"buy":"sell"}">${t.isBuy?"BUY":"SELL"}</span></td>
-      <td class="num">${n(t.sol,3)}</td>
-      <td class="num" style="color:var(--faint)">${(+t.px).toExponential(2)}</td>
-      <td class="num" style="color:var(--faint)">${esc(String(t.trader).slice(0,4))}…${esc(String(t.trader).slice(-4))}</td>
-      <td class="num" style="color:var(--faint)">${ago(new Date(+t.t).toISOString().replace("T"," ").slice(0,19))}</td>
-    </tr>`).join("") || `<tr><td colspan="5" class="empty">No trades.</td></tr>`;
-
-  $("#coinHolders").innerHTML = (d.holders||[]).map((h)=>{
-    const net = +h.bought - +h.sold;
-    return `<tr>
-      <td class="num">${esc(String(h.trader).slice(0,4))}…${esc(String(h.trader).slice(-4))}</td>
-      <td class="num up">${n(h.bought,2)}</td>
-      <td class="num down">${n(h.sold,2)}</td>
-      <td class="num ${cls(net)}">${n(net,2)}</td>
-      <td class="num">${h.trades}</td></tr>`;
-  }).join("") || `<tr><td colspan="5" class="empty">No holders.</td></tr>`;
+  const ro = new ResizeObserver(() => chart.resize());
+  ro.observe(document.getElementById("chart"));
 }
 
 async function loadCandles(mint) {
   initChart();
-  if (!chart) return;
+  if (!chart) { $("#chartNote").textContent = "chart library failed to load"; return; }
   const c = await api(`/api/coin/${mint}/candles?tf=${tf}`).catch(() => []);
   if (selMint !== mint) return;
-  $("#chartNote").textContent = c.length
-    ? `${c.length} candles · market cap in ${solPrice ? "USD" : "SOL"}`
-    : "no candles at this timeframe";
+
   // Plotted as market cap, not raw price: a coin at 2.8e-8 SOL renders as a flat
-  // line of zeros on any axis a human can read.
+  // line of zeros on any axis a human can read. In USD when the SOL rate is
+  // known, otherwise in SOL — never as $0.00.
   const mult = SUPPLY * (solPrice || 1);
-  chart.applyNewData(c.map((k) => ({
+  bars = c.map((k) => ({
     timestamp: +k.t, open: +k.o * mult, high: +k.h * mult,
     low: +k.l * mult, close: +k.c * mult, volume: +k.v,
-  })));
+  }));
+  $("#chartNote").textContent = bars.length
+    ? `${bars.length} candles · market cap in ${solPrice ? "USD" : "SOL"}`
+    : "no trades at this timeframe yet";
+
+  // setPeriod re-runs the loader, which is what we want: a timeframe switch is a
+  // different series and should refit rather than append.
+  chart.setPeriod(PERIODS[tf]);
 }
 
 document.querySelectorAll(".tf").forEach((b) => (b.onclick = () => {
