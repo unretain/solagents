@@ -11,6 +11,7 @@ import { livePicks, liveTape, publishedPicks, liveTrades, scanRate } from "./liv
 import { startPaperEngine } from "./paper.js";
 import { attach } from "./stream.js";
 import { coinDetail, candles, watchlist } from "./coin.js";
+import { issueNonce, messageFor, verifyWallet, readSession } from "./auth.js";
 import { memo, invalidate } from "./cache.js";
 import { TP_MULT, SL_MULT } from "./model/spec.js";
 import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
@@ -40,6 +41,43 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 app.use(express.static(path.join(here, "../public"), { maxAge: "1h" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// ─────────────────────────── wallet auth ─────────────────────────
+
+function sessionOf(req: express.Request): string | null {
+  const raw = req.headers.cookie || "";
+  const m = /(?:^|;\s*)pl_session=([^;]+)/.exec(raw);
+  return m ? readSession(decodeURIComponent(m[1])) : null;
+}
+
+app.get("/api/auth/nonce", (_req, res) => {
+  const nonce = issueNonce();
+  res.json({ nonce, message: messageFor(nonce) });
+});
+
+app.post("/api/auth/verify", (req, res) => {
+  const body = z.object({
+    pubkey: z.string().min(32).max(44),
+    signature: z.string().min(64).max(120),
+    nonce: z.string().min(8).max(64),
+  }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "malformed request" });
+
+  const out = verifyWallet(body.data);
+  if (!out.ok) return res.status(401).json({ error: out.error });
+
+  res.setHeader("Set-Cookie",
+    `pl_session=${encodeURIComponent(out.token)}; Path=/; Max-Age=${30*24*3600}; ` +
+    `SameSite=Lax; HttpOnly; Secure`);
+  res.json({ ok: true, pubkey: body.data.pubkey });
+});
+
+app.get("/api/auth/me", (req, res) => res.json({ pubkey: sessionOf(req) }));
+
+app.post("/api/auth/logout", (_req, res) => {
+  res.setHeader("Set-Cookie", "pl_session=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly; Secure");
+  res.json({ ok: true });
+});
 
 /** The feature catalogue drives the UI's filter builder — the UI never hardcodes
  *  a feature list, so adding one to features.ts makes it appear on the site. */
@@ -112,7 +150,7 @@ app.post("/api/strategies", async (req, res, next) => {
     await q(
       `INSERT INTO sa_strategy (id, owner_id, name, thesis, prompt, config, is_public)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, body.ownerId, s.name, s.thesis, body.prompt, JSON.stringify(s), body.isPublic],
+      [id, sessionOf(req) ?? body.ownerId, s.name, s.thesis, body.prompt, JSON.stringify(s), body.isPublic],
     );
 
     // Backtest on publish, so the leaderboard is never populated by a strategy
@@ -365,7 +403,7 @@ app.post("/api/runs", async (req, res, next) => {
     const id = newId("run");
     await q(
       `INSERT INTO sa_run (id, strategy_id, owner_id, mode, bankroll_sol) VALUES ($1,$2,$3,'paper',$4)`,
-      [id, body.strategyId, body.ownerId, body.bankrollSol],
+      [id, body.strategyId, sessionOf(req) ?? body.ownerId, body.bankrollSol],
     );
     invalidate("agents");
     res.json({ id, mode: "paper" });

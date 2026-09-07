@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Poump Lab</title>
+<title>Pump Lab</title>
 <meta name="description" content="Train trading agents on live Solana data.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -54,13 +54,14 @@
     padding:11px 22px;background:hsl(0 0% 3.9% / .72);
     backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
     border-bottom:1px solid hsl(0 0% 100% / .055)}
-  .brand{display:flex;align-items:center;gap:9px;margin-right:20px;font-weight:600;
-    font-size:15.5px;letter-spacing:-.03em;cursor:pointer}
-  .mark{width:21px;height:21px;border-radius:6px;flex:0 0 auto;position:relative;
-    background:linear-gradient(155deg,var(--green-lit),var(--green));
-    box-shadow:0 0 15px hsl(142 76% 36% / .5)}
-  .mark::after{content:"";position:absolute;inset:auto 5px 5px 5px;height:2px;border-radius:2px;
-    background:hsl(0 0% 100% / .9)}
+  .brand{display:flex;align-items:center;gap:10px;margin-right:22px;cursor:pointer;
+    font-family:"Times New Roman",Times,Georgia,serif;font-weight:600;font-size:21px;
+    letter-spacing:.005em;line-height:1}
+  /* MATLAB sets its wordmark in a Times face with a large cap and small caps
+     after it. font-variant small-caps reproduces that without a custom font. */
+  .brand .wm{font-variant:small-caps;padding-top:2px}
+  .mark{width:30px;height:26px;flex:0 0 auto;display:block;
+    filter:drop-shadow(0 0 12px hsl(142 76% 40% / .38))}
   .navlink{padding:7px 13px;border-radius:9px;color:var(--dim);font-size:13.5px;font-weight:500;
     cursor:pointer;transition:.16s;border:1px solid transparent;white-space:nowrap}
   .navlink:hover{color:var(--ink);background:var(--glass-2)}
@@ -68,6 +69,15 @@
   .navstats{margin-left:auto;display:flex;gap:18px;align-items:center;
     font:400 11.5px/1 var(--mono);color:var(--faint)}
   .navstats b{color:var(--dim);font-weight:500}
+  .wallet{margin-left:14px;background:var(--glass);color:var(--ink);
+    border:1px solid hsl(142 76% 36% / .35);border-radius:9px;padding:7px 14px;
+    font:600 13px var(--sans);box-shadow:none;white-space:nowrap}
+  .wallet:hover{background:var(--green-dim);border-color:hsl(142 76% 36% / .6);transform:none}
+  .wallet.on{background:var(--green-dim);color:var(--green-lit);
+    border-color:hsl(142 76% 36% / .45);font-family:var(--mono);font-weight:500;font-size:12px}
+  .gate{padding:22px;text-align:center}
+  .gate h4{margin:0 0 7px;font-size:16px;font-weight:600}
+  .gate p{margin:0 0 16px;color:var(--faint);font-size:13px;line-height:1.55}
   @media(max-width:1000px){.navstats{display:none}.navlink{padding:7px 9px;font-size:13px}}
 
   .wrap{max-width:1360px;margin:0 auto;padding:34px 22px 90px}
@@ -259,7 +269,32 @@
 <body>
 
 <nav class="nav">
-  <div class="brand" data-page="home"><div class="mark"></div>Poump Lab</div>
+  <div class="brand" data-page="home"><svg class="mark" viewBox="0 0 64 56" aria-hidden="true">
+      <defs>
+        <linearGradient id="mA" x1="14%" y1="0%" x2="86%" y2="100%">
+          <stop offset="0%" stop-color="#7ef2a0"/><stop offset="42%" stop-color="#22c55e"/>
+          <stop offset="100%" stop-color="#0d7a2c"/>
+        </linearGradient>
+        <linearGradient id="mB" x1="0%" y1="30%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#effef4"/><stop offset="100%" stop-color="#57d97f"/>
+        </linearGradient>
+        <linearGradient id="mC" x1="50%" y1="0%" x2="50%" y2="100%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity=".85"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <!-- the flat skirt folding away to the left -->
+      <path d="M2 40 L22 28 L30 34 L14 47 Z" fill="url(#mB)" opacity=".92"/>
+      <!-- the secondary lobe behind the peak -->
+      <path d="M22 28 C27 16 30 14 34 18 C37 21 36 28 33 34 C30 39 25 38 22 28 Z"
+            fill="#1aa34a" opacity=".95"/>
+      <!-- the main peak -->
+      <path d="M14 47 C22 44 30 30 36 14 C39 6 44 5 47 13 C51 24 54 40 62 50
+               C54 47 47 40 43 34 C38 40 30 47 14 47 Z" fill="url(#mA)"/>
+      <!-- specular ridge -->
+      <path d="M40 12 C42 7 45 7 46 12 C48 22 50 32 54 40 C48 32 44 22 40 12 Z"
+            fill="url(#mC)"/>
+    </svg><span class="wm">Pump Lab</span></div>
   <div class="navlink" data-page="home" aria-current="page">Overview</div>
   <div class="navlink" data-page="live">Live</div>
   <div class="navlink" data-page="terminal">Terminal</div>
@@ -268,6 +303,7 @@
   <div class="navlink" data-page="mine">My agents</div>
   <div class="navlink" data-page="board">Leaderboard</div>
   <div class="navstats" id="navstats"></div>
+  <button class="wallet" id="wallet">Connect wallet</button>
 </nav>
 
 <div class="wrap">
@@ -277,7 +313,7 @@
     <div class="hero">
       <div class="eyebrow"><span class="dot on"></span> Reading the chain from our own validator</div>
       <h2>Describe a trading strategy. <em>Watch it trade.</em></h2>
-      <p>Poump Lab turns a sentence of English into a trading agent, tests it against every
+      <p>Pump Lab turns a sentence of English into a trading agent, tests it against every
         Solana memecoin launch we have on record, then runs it live on paper money and ranks it
         against everyone else's.</p>
       <div class="row">
@@ -436,7 +472,14 @@
       what trades is that config, so a backtest and a live run make identical decisions.</p>
     <div class="grid gside">
       <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="glass"><div class="body">
+        <div class="glass" id="buildGate" hidden><div class="gate">
+          <h4>Connect a wallet to build</h4>
+          <p>Your agents are saved against your wallet so they follow you between
+            devices and show up on the leaderboard under one identity.<br>
+            Signing proves you hold the key — it authorises no transaction and moves no funds.</p>
+          <button id="gateConnect">Connect Phantom</button>
+        </div></div>
+        <div class="glass" id="buildForm"><div class="body">
           <div class="steplbl">Step 1 — describe it</div>
           <textarea id="prompt" placeholder="Buy coins 60 seconds after launch that the model rates above 0.5, with a real X profile and at least 20 different traders. Take profit at 30%, stop out at 25%, trail 15%, never hold past 5 minutes."></textarea>
           <div class="row" style="margin-top:12px">
@@ -525,16 +568,25 @@ const n = (v, d = 2) => (v == null || Number.isNaN(+v) ? "—" : (+v).toFixed(d)
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 const cls = (v) => (v > 0 ? "up" : v < 0 ? "down" : "");
 const IMGSRC = "https://api.polyx.trade/img?u=";
+// Load the coin image straight from wherever it lives (ipfs.io, j7tracker,
+// twimg, the launchpad CDNs) and only fall back to the polyx proxy if that
+// fails. Direct is one less hop and does not depend on polyx being up; the
+// proxy still rescues hosts that block hotlinking or serve a bad content-type.
+function imgTag(url, cls) {
+  if (!url) return `<span class="${cls}"></span>`;
+  const direct = esc(url);
+  const proxied = IMGSRC + encodeURIComponent(url);
+  return `<img src="${direct}" alt="" loading="lazy" decoding="async" data-fb="${esc(proxied)}"
+    onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.dataset.fb='';}
+             else{this.className='${cls}';this.removeAttribute('src');}">`;
+}
 const ago = (ts) => {
   const s = Math.max(0, (Date.now() - Date.parse(String(ts).replace(" ", "T") + "Z")) / 1000);
   return s < 60 ? `${s.toFixed(0)}s` : s < 3600 ? `${(s/60).toFixed(0)}m` : `${(s/3600).toFixed(0)}h`;
 };
 function coinHTML(r) {
   const label = esc(r.symbol || (r.mint || "").slice(0, 6));
-  const pic = r.image
-    ? `<img src="${IMGSRC}${encodeURIComponent(r.image)}" alt="" loading="lazy" decoding="async"
-         onerror="this.className='ph';this.removeAttribute('src')">`
-    : `<span class="ph"></span>`;
+  const pic = imgTag(r.image, "ph");
   return `<div class="coin">${pic}<span>${label}</span></div>`;
 }
 const stat = (k, v, c = "", s = "") =>
@@ -553,6 +605,7 @@ function show(p) {
   if (p === "board") loadBoard(mode);
   if (p === "home") loadHome();
   if (p === "terminal") loadTerminal();
+  if (p === "live") tickPicks();
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 document.querySelectorAll("[data-page]").forEach((el) => (el.onclick = () => show(el.dataset.page)));
@@ -629,13 +682,20 @@ async function tickPicks() {
   try {
     const picks = await api("/api/live/picks");
     $("#pickDot").className = picks.length ? "dot on" : "dot";
+    window.__picksOk = true;
     $("#pickBody").innerHTML = picks.map((p) => `<tr>
       <td>${coinHTML(p)}</td><td>${esc(p.strategyName||"")}</td>
       <td class="num">${p.ageS}s</td><td class="num">${p.nTraders}</td>
       <td class="num">${n(p.volSol,1)}</td>
       <td><span class="tag ${esc(p.twitterKind)}">${esc(p.twitterKind)}</span></td></tr>`).join("")
       || `<tr><td colspan="6" class="empty">No agent has matched in the last 15 minutes.</td></tr>`;
-  } catch {}
+  } catch (e) {
+    // Never leave the panel on "Loading…" forever — a silent catch here is what
+    // made a failed fetch look identical to a quiet market.
+    $("#pickDot").className = "dot";
+    $("#pickBody").innerHTML =
+      `<tr><td colspan="6" class="empty">Could not load picks — ${esc(e.message)}</td></tr>`;
+  }
 }
 tickPicks(); setInterval(tickPicks, 6000);
 
@@ -752,6 +812,7 @@ function renderBT(r) {
     </table></div>`;
 }
 $("#deploy").onclick = async () => {
+  if (!wallet) { connectWallet(); return; }
   const b = $("#deploy"); b.disabled = true; b.innerHTML = `<span class="spin"></span>Deploying`;
   try {
     const pub = await api("/api/strategies", { method:"POST",
@@ -949,10 +1010,7 @@ async function loadTerminal() {
     watching = await api("/api/watchlist");
     $("#wlCount").textContent = `${watching.length} coins`;
     $("#wl").innerHTML = watching.map((w) => {
-      const pic = w.image
-        ? `<img src="${IMGSRC}${encodeURIComponent(w.image)}" alt="" loading="lazy"
-            onerror="this.className='ph';this.removeAttribute('src')">`
-        : `<span class="ph"></span>`;
+      const pic = imgTag(w.image, "ph");
       const hot = +w.score >= .4;
       return `<div class="wl-item" data-mint="${esc(w.mint)}"
           aria-selected="${w.mint === selMint}">
@@ -983,10 +1041,7 @@ async function loadCoinDetail(mint) {
   const d = await api(`/api/coin/${mint}`).catch(() => null);
   if (!d || selMint !== mint) return;
   const m = d.meta, pr = d.price || {};
-  const pic = m.image
-    ? `<img src="${IMGSRC}${encodeURIComponent(m.image)}" alt=""
-        onerror="this.className='ph';this.removeAttribute('src')">`
-    : `<span class="ph"></span>`;
+  const pic = imgTag(m.image, "ph");
   const links = [
     m.twitter ? `<a class="tag" href="${esc(m.twitter)}" target="_blank" rel="noopener">X</a>` : "",
     m.website ? `<a class="tag" href="${esc(m.website)}" target="_blank" rel="noopener">site</a>` : "",
@@ -1111,6 +1166,90 @@ async function solTick() {
     if (r && r.solPrice) solPrice = +r.solPrice;
   } catch {}
 }
+
+
+// ── PHANTOM WALLET ────────────────────────────────────────────────
+// Sign-in is a signature over a server nonce, not a password. The nonce is
+// single-use, so a captured signature cannot be replayed, and the server checks
+// the ed25519 signature against the claimed pubkey before issuing a session.
+let wallet = null;
+
+function provider() {
+  const p = window.phantom?.solana ?? window.solana;
+  return p && p.isPhantom ? p : null;
+}
+const short = (k) => `${k.slice(0,4)}…${k.slice(-4)}`;
+
+function paintWallet() {
+  const b = $("#wallet");
+  if (wallet) {
+    b.textContent = short(wallet);
+    b.className = "wallet on";
+    b.title = wallet + " — click to disconnect";
+  } else {
+    b.textContent = "Connect wallet";
+    b.className = "wallet";
+    b.title = "Sign in with Phantom";
+  }
+  const gate = $("#buildGate"), form = $("#buildForm");
+  if (gate && form) { gate.hidden = !!wallet; form.hidden = !wallet; }
+  const dep = $("#deploy");
+  if (dep && !wallet) { dep.disabled = true; dep.title = "Connect a wallet to publish"; }
+}
+
+async function connectWallet() {
+  const ph = provider();
+  if (!ph) { window.open("https://phantom.app/download", "_blank", "noopener"); return; }
+  const b = $("#wallet"); const was = b.textContent;
+  b.disabled = true; b.innerHTML = `<span class="spin"></span>Connecting`;
+  try {
+    const { publicKey } = await ph.connect();
+    const pubkey = publicKey.toString();
+    const { nonce, message } = await api("/api/auth/nonce");
+    const signed = await ph.signMessage(new TextEncoder().encode(message), "utf8");
+    // Phantom returns raw bytes; the server expects base58, same as the pubkey.
+    const signature = b58encode(signed.signature ?? signed);
+    await api("/api/auth/verify", { method: "POST",
+      body: JSON.stringify({ pubkey, signature, nonce }) });
+    wallet = pubkey;
+  } catch (e) {
+    if (!/User rejected|reject/i.test(e.message || "")) alert(`Wallet sign-in failed: ${e.message}`);
+    b.textContent = was;
+  } finally { b.disabled = false; paintWallet(); }
+}
+
+async function disconnectWallet() {
+  try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+  try { await provider()?.disconnect?.(); } catch {}
+  wallet = null; paintWallet();
+}
+
+const B58A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function b58encode(bytes) {
+  const b = Array.from(bytes);
+  const digits = [0];
+  for (const byte of b) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i++) {
+      carry += digits[i] << 8; digits[i] = carry % 58; carry = (carry / 58) | 0;
+    }
+    while (carry) { digits.push(carry % 58); carry = (carry / 58) | 0; }
+  }
+  let out = "";
+  for (const byte of b) { if (byte) break; out += "1"; }
+  for (let i = digits.length - 1; i >= 0; i--) out += B58A[digits[i]];
+  return out;
+}
+
+$("#wallet").onclick = () => (wallet ? disconnectWallet() : connectWallet());
+const gc = $("#gateConnect"); if (gc) gc.onclick = connectWallet;
+
+// Restore an existing session, and reconnect silently if Phantom is already
+// trusted for this site so a returning user is not asked to sign again.
+api("/api/auth/me").then((m) => { wallet = m.pubkey; paintWallet(); }).catch(paintWallet);
+provider()?.connect?.({ onlyIfTrusted: true })
+  .then(() => api("/api/auth/me")).then((m) => { if (m && m.pubkey) { wallet = m.pubkey; paintWallet(); } })
+  .catch(() => {});
 
 renderPresets();
 setInterval(() => { if (page === "mine") loadMine(); }, 8000);
