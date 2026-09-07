@@ -19,6 +19,7 @@ import { assertFeatureParity, toSql } from "./strategy/evaluate.js";
 import { compileStrategy } from "./llm/compile.js";
 import { llmStatus } from "./llm/client.js";
 import { cors } from "./cors.js";
+import { createWallet, walletFor, withdraw, liveEnabled } from "./live/wallet.js";
 import { runBacktest } from "./backtest/run.js";
 import { q, newId, migrate, describeError } from "./db.js";
 import { chQuery } from "./clickhouse.js";
@@ -464,6 +465,7 @@ app.post("/api/runs", async (req, res, next) => {
     const body = z.object({
       strategyId: z.string(),
       bankrollSol: z.number().positive().max(1000).default(10),
+      mode: z.enum(["paper", "live"]).default("paper"),
     }).parse(req.body);
     const owner = sessionOf(req);
     if (!owner) return res.status(401).json({ error: "Connect a wallet to start a run." });
@@ -471,18 +473,60 @@ app.post("/api/runs", async (req, res, next) => {
     const [s] = await q<{ id: string }>(`SELECT id FROM sa_strategy WHERE id=$1`, [body.strategyId]);
     if (!s) return res.status(404).json({ error: "strategy not found" });
 
-    // Live mode is not reachable from the API yet. The engine, the fills table
-    // and the leaderboard all handle it, but nothing signs a transaction - so
-    // the endpoint refuses rather than quietly opening a "live" run that is
-    // actually paper and would rank alongside real ones.
+    // A live run is created STOPPED, with an empty wallet. It cannot trade until
+    // the owner funds it and starts it explicitly, so a mis-click cannot put
+    // money on the table, and the deposit address exists to be funded before
+    // anything is at risk.
+    const wantsLive = body.mode === "live";
+    if (wantsLive && !liveEnabled()) {
+      return res.status(503).json({ error: "Live trading is not configured on this server." });
+    }
     const id = newId("run");
     await q(
-      `INSERT INTO sa_run (id, strategy_id, owner_id, mode, bankroll_sol) VALUES ($1,$2,$3,'paper',$4)`,
-      [id, body.strategyId, owner, body.bankrollSol],
+      `INSERT INTO sa_run (id, strategy_id, owner_id, mode, bankroll_sol, status)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, body.strategyId, owner, wantsLive ? "live" : "paper", body.bankrollSol,
+       wantsLive ? "stopped" : "running"],
     );
+    if (wantsLive) {
+      const pubkey = await createWallet(id, owner);
+      invalidate("agents");
+      return res.json({ id, mode: "live", status: "stopped", deposit: pubkey });
+    }
     invalidate("agents");
     res.json({ id, mode: "paper" });
   } catch (e) { next(e); }
+});
+
+/** The deposit address and live balance for a run. Owner only. */
+app.get("/api/runs/:id/wallet", async (req, res, next) => {
+  try {
+    const owner = sessionOf(req);
+    if (!owner) return res.status(401).json({ error: "Connect a wallet." });
+    const w = await walletFor(String(req.params.id));
+    if (!w) return res.status(404).json({ error: "no wallet for this run" });
+    if (w.ownerId !== owner) return res.status(403).json({ error: "not your run" });
+    // ownerId is the requester's own address; no reason to echo it back.
+    res.json({ pubkey: w.pubkey, sol: w.sol, lamports: w.lamports });
+  } catch (e) { next(e); }
+});
+
+/**
+ * Withdraw to the owner's wallet.
+ *
+ * There is no destination parameter, deliberately. See wallet.ts: the funds can
+ * only go back to the address that created the run.
+ */
+app.post("/api/runs/:id/withdraw", async (req, res, next) => {
+  try {
+    const owner = sessionOf(req);
+    if (!owner) return res.status(401).json({ error: "Connect a wallet." });
+    const body = z.object({ lamports: z.number().int().positive().optional() }).parse(req.body ?? {});
+    const out = await withdraw(String(req.params.id), owner, body.lamports);
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "withdrawal failed" });
+  }
 });
 
 app.post("/api/runs/:id/stop", async (req, res, next) => {

@@ -124,7 +124,7 @@ export async function migrate(): Promise<void> {
     throw new Error(`cannot reach Postgres: ${describeError(e)}`);
   }
 
-  for (const f of ["01_schema.sql", "02_paper.sql", "03_model.sql"]) {
+  for (const f of ["01_schema.sql", "02_paper.sql", "03_model.sql", "04_live.sql"]) {
     const path = `${dir}/${f}`;
     if (!existsSync(path)) {
       console.warn(`[db] ${path} not found - skipping migration`);
